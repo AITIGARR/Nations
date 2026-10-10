@@ -1,0 +1,337 @@
+package com.horizon.jarvis;
+
+import android.Manifest;
+import android.app.*;
+import android.content.*;
+import android.content.pm.PackageManager;
+import android.media.MediaPlayer;
+import android.os.*;
+import android.provider.Settings;
+import android.speech.*;
+import android.speech.tts.*;
+import java.io.File;
+import java.text.SimpleDateFormat;
+import java.util.*;
+import java.util.concurrent.*;
+
+public class JarvisService extends Service implements RecognitionListener, JarvisOverlay.Listener {
+    private static final String CHANNEL = "jarvis_voice_v2";
+    private final Handler handler = new Handler(Looper.getMainLooper());
+    private final ExecutorService network = Executors.newSingleThreadExecutor();
+    private final ArrayList<org.json.JSONObject> conversation = new ArrayList<>();
+    private SpeechRecognizer recognizer;
+    private TextToSpeech tts;
+    private JarvisOverlay overlay;
+    private MediaPlayer player;
+    private boolean running, listening, busy, speaking, ttsReady;
+    private Runnable restart;
+    private long nextCommandUntil;
+
+    @Override public void onCreate() {
+        super.onCreate();
+        NotificationManager notifications = getSystemService(NotificationManager.class);
+        notifications.createNotificationChannel(new NotificationChannel(
+            CHANNEL, "JARVIS — микрофон", NotificationManager.IMPORTANCE_LOW));
+        overlay = new JarvisOverlay(this, this);
+        tts = new TextToSpeech(this, result -> {
+            if (result == TextToSpeech.SUCCESS && tts != null) {
+                ttsReady = tts.setLanguage(new Locale("ru", "RU")) >= 0;
+                tts.setSpeechRate(.94f);
+                tts.setPitch(.9f);
+                tts.setOnUtteranceProgressListener(new UtteranceProgressListener() {
+                    @Override public void onStart(String id) {}
+                    @Override public void onDone(String id) { handler.post(() -> finishSpeech()); }
+                    @Override public void onError(String id) { handler.post(() -> finishSpeech()); }
+                });
+            }
+        });
+    }
+
+    @Override public int onStartCommand(Intent intent, int flags, int startId) {
+        String action = intent == null ? MainActivity.START : intent.getAction();
+        if (MainActivity.STOP.equals(action)) { stopSelf(); return START_NOT_STICKY; }
+        if (!running) {
+            if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+                publish("Нет разрешения на микрофон", "system");
+                stopSelf();
+                return START_NOT_STICKY;
+            }
+            try {
+                startForeground(1, foregroundNotification(),
+                    android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE);
+            } catch (Exception e) {
+                publish("Не удалось запустить микрофон: " + e.getClass().getSimpleName(), "system");
+                stopSelf();
+                return START_NOT_STICKY;
+            }
+            running = true;
+            overlay.show();
+            publish(Settings.canDrawOverlays(this)
+                ? "JARVIS активен. Скажите «Джарвис»." :
+                  "JARVIS активен. Для плавающего окна разрешите показ поверх приложений.", "system");
+            if (SpeechRecognizer.isRecognitionAvailable(this)) {
+                try {
+                    recognizer = SpeechRecognizer.createSpeechRecognizer(this);
+                    recognizer.setRecognitionListener(this);
+                    schedule(400);
+                } catch (Exception e) { publish("Не удалось начать распознавание речи.", "system"); }
+            } else {
+                publish("Распознавание речи недоступно. Используйте текстовый ввод.", "system");
+            }
+        }
+        if (MainActivity.QUERY.equals(action) && intent != null) {
+            String q = intent.getStringExtra("query");
+            if (q != null && !q.trim().isEmpty()) command(q.trim());
+        }
+        return START_NOT_STICKY;
+    }
+
+    private Notification foregroundNotification() {
+        Intent open = new Intent(this, MainActivity.class);
+        PendingIntent activity = PendingIntent.getActivity(this, 10, open,
+            PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
+        Intent stop = new Intent(this, JarvisService.class).setAction(MainActivity.STOP);
+        PendingIntent stopPending = PendingIntent.getService(this, 11, stop,
+            PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
+        return new Notification.Builder(this, CHANNEL)
+            .setSmallIcon(android.R.drawable.ic_btn_speak_now)
+            .setContentTitle("JARVIS AI")
+            .setContentText("Слушаю обращение «Джарвис»")
+            .setContentIntent(activity)
+            .setOngoing(true)
+            .addAction(android.R.drawable.ic_menu_close_clear_cancel, "Остановить", stopPending)
+            .build();
+    }
+
+    private void publish(String message, String role) {
+        Intent event = new Intent(MainActivity.EVENT);
+        event.setPackage(getPackageName());
+        event.putExtra("message", message);
+        event.putExtra("role", role);
+        sendBroadcast(event);
+        if (overlay != null) overlay.update(message);
+    }
+
+    private void cancelListen() {
+        if (restart != null) handler.removeCallbacks(restart);
+        restart = null;
+        if (recognizer != null && listening) {
+            listening = false;
+            recognizer.cancel();
+        }
+    }
+
+    private void schedule(long delay) {
+        if (restart != null) handler.removeCallbacks(restart);
+        if (!running || recognizer == null || listening || busy || speaking) return;
+        restart = () -> {
+            restart = null;
+            if (!running || busy || speaking || listening) return;
+            try {
+                Intent speech = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
+                speech.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL,
+                    RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
+                speech.putExtra(RecognizerIntent.EXTRA_LANGUAGE, "ru-RU");
+                speech.putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, false);
+                speech.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3);
+                listening = true;
+                recognizer.startListening(speech);
+            } catch (Exception e) {
+                listening = false;
+                schedule(2500);
+            }
+        };
+        handler.postDelayed(restart, delay);
+    }
+
+    private void heard(String words) {
+        String lower = words.toLowerCase(Locale.ROOT).replace('ё', 'е');
+        int at = -1, size = 0;
+        for (String word : new String[] {"джарвис", "жарвис", "джервис", "jarvis"}) {
+            int i = lower.indexOf(word);
+            if (i != -1 && (at == -1 || i < at)) { at = i; size = word.length(); }
+        }
+        if (at >= 0) {
+            String tail = words.substring(at + size).replaceFirst("^[\\s,.:!?—-]+", "").trim();
+            if (tail.isEmpty()) {
+                nextCommandUntil = SystemClock.elapsedRealtime() + 15000;
+                busy = true;
+                speak("Слушаю.", false);
+            } else {
+                nextCommandUntil = 0;
+                command(tail);
+            }
+        } else if (SystemClock.elapsedRealtime() < nextCommandUntil) {
+            nextCommandUntil = 0;
+            command(words);
+        } else schedule(700);
+    }
+
+    @Override public void onCommand(String query) {
+        command(query);
+    }
+    @Override public void onStop() { stopSelf(); }
+
+    private void command(String question) {
+        if (!running) return;
+        if (busy) { publish("Я ещё обрабатываю предыдущую команду.", "system"); return; }
+        busy = true;
+        cancelListen();
+        String q = question.length() > 1200 ? question.substring(0, 1200) : question;
+        String lower = q.toLowerCase(Locale.ROOT).replace('ё', 'е');
+        publish(q, "user");
+
+        if (lower.contains("сколько времени") || lower.contains("который час") || lower.equals("время")) {
+            speak("Сейчас " + new SimpleDateFormat("HH:mm", new Locale("ru", "RU")).format(new Date()), false);
+        } else if (lower.contains("заряд") || lower.contains("батаре")) {
+            android.os.BatteryManager battery = getSystemService(android.os.BatteryManager.class);
+            speak("Заряд батареи " + battery.getIntProperty(android.os.BatteryManager.BATTERY_PROPERTY_CAPACITY) + " процентов.", false);
+        } else if (lower.contains("остановись") || lower.contains("выключись") || lower.contains("прекрати слушать")) {
+            publish("Отключаюсь.", "assistant"); stopSelf();
+        } else if (lower.contains("открой") || lower.contains("запусти")) {
+            openApplication(lower);
+        } else if (lower.equals("привет") || lower.contains("ты тут")) {
+            speak("Я на связи. Чем могу помочь?", false);
+        } else {
+            String key = JarvisBrain.getKey(this);
+            if (key.isEmpty()) {
+                speak("Добавьте OpenAI API-ключ в настройках JARVIS для полноценного общения с искусственным интеллектом.", false);
+                return;
+            }
+            publish("Обдумываю ответ...", "system");
+            network.execute(() -> {
+                String answer;
+                try {
+                    answer = JarvisBrain.respond(key, conversation, q);
+                    conversation.add(JarvisBrain.turn("user", q));
+                    conversation.add(JarvisBrain.turn("assistant", answer));
+                    while (conversation.size() > 12) { conversation.remove(0); conversation.remove(0); }
+                } catch (Exception e) {
+                    String reason = e.getMessage();
+                    answer = "Не удалось связаться с ИИ: " +
+                        (reason == null ? e.getClass().getSimpleName() : reason.substring(0, Math.min(140, reason.length())));
+                }
+                String finalAnswer = answer;
+                handler.post(() -> { if (running) speak(finalAnswer, true); });
+            });
+        }
+    }
+
+    private void openApplication(String query) {
+        Intent launch = null;
+        String pkg = null;
+        if (query.contains("youtube") || query.contains("ютуб")) pkg = "com.google.android.youtube";
+        else if (query.contains("telegram") || query.contains("телеграм")) pkg = "org.telegram.messenger";
+        else if (query.contains("minecraft") || query.contains("майнкрафт")) pkg = "com.mojang.minecraftpe";
+        if (pkg != null) launch = getPackageManager().getLaunchIntentForPackage(pkg);
+        else if (query.contains("настрой")) launch = new Intent(Settings.ACTION_SETTINGS);
+        else if (query.contains("браузер") || query.contains("интернет")) launch =
+            new Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://www.google.com"));
+        if (launch == null) { speak("Такое приложение не найдено или эта команда пока не поддерживается.", false); return; }
+        launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        try {
+            PendingIntent pending = PendingIntent.getActivity(this, 420, launch,
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+            Notification.Builder notification = new Notification.Builder(this, CHANNEL)
+                .setSmallIcon(android.R.drawable.ic_menu_compass)
+                .setContentTitle("JARVIS — открыть приложение")
+                .setContentText("Нажмите, чтобы выполнить команду.")
+                .setContentIntent(pending)
+                .setAutoCancel(true);
+            getSystemService(NotificationManager.class).notify(9, notification.build());
+            speak("Готово. Нажмите на уведомление для запуска.", false);
+        } catch (Exception e) {
+            speak("Не удалось подготовить запуск.", false);
+        }
+    }
+
+    private void speak(String text, boolean preferCloudVoice) {
+        if (!running) return;
+        publish(text, "assistant");
+        speaking = true;
+        String key = JarvisBrain.getKey(this);
+        boolean cloud = preferCloudVoice && !key.isEmpty()
+            && getSharedPreferences(MainActivity.PREFS, MODE_PRIVATE).getBoolean("cloud_voice", true);
+        if (!cloud) { speakOnDevice(text); return; }
+        network.execute(() -> {
+            File file;
+            try { file = JarvisBrain.createSpeech(this, key, text); }
+            catch (Exception e) { file = null; }
+            File finalFile = file;
+            handler.post(() -> {
+                if (!running) return;
+                if (finalFile != null) playAudio(finalFile, text);
+                else speakOnDevice(text);
+            });
+        });
+    }
+
+    private void playAudio(File source, String fallback) {
+        try {
+            if (player != null) { player.release(); player = null; }
+            player = new MediaPlayer();
+            player.setDataSource(source.getAbsolutePath());
+            player.setOnCompletionListener(p -> {
+                p.release();
+                player = null;
+                finishSpeech();
+            });
+            player.setOnErrorListener((p, what, extra) -> {
+                p.release();
+                player = null;
+                speakOnDevice(fallback);
+                return true;
+            });
+            player.prepare();
+            player.start();
+        } catch (Exception e) {
+            if (player != null) { player.release(); player = null; }
+            speakOnDevice(fallback);
+        }
+    }
+
+    private void speakOnDevice(String text) {
+        if (ttsReady && tts != null) {
+            int res = tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, "jarvis_v2_reply");
+            if (res == TextToSpeech.ERROR) finishSpeech();
+        } else finishSpeech();
+    }
+
+    private void finishSpeech() {
+        if (!running) return;
+        speaking = false;
+        busy = false;
+        schedule(650);
+    }
+
+    @Override public void onReadyForSpeech(Bundle b) {}
+    @Override public void onBeginningOfSpeech() {}
+    @Override public void onRmsChanged(float rms) {}
+    @Override public void onBufferReceived(byte[] data) {}
+    @Override public void onEndOfSpeech() {}
+    @Override public void onPartialResults(Bundle b) {}
+    @Override public void onEvent(int type, Bundle b) {}
+    @Override public void onResults(Bundle results) {
+        listening = false;
+        ArrayList<String> words = results.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
+        if (words != null && !words.isEmpty()) heard(words.get(0));
+        else schedule(900);
+    }
+    @Override public void onError(int error) {
+        listening = false;
+        if (running && !busy && !speaking)
+            schedule(error == SpeechRecognizer.ERROR_RECOGNIZER_BUSY ? 3200 : 1500);
+    }
+
+    @Override public android.os.IBinder onBind(Intent intent) { return null; }
+    @Override public void onDestroy() {
+        running = false;
+        cancelListen();
+        if (recognizer != null) recognizer.destroy();
+        if (tts != null) { tts.stop(); tts.shutdown(); }
+        if (player != null) { player.release(); player = null; }
+        if (overlay != null) overlay.remove();
+        network.shutdownNow();
+        super.onDestroy();
+    }
+}

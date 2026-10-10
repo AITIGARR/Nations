@@ -1,482 +1,291 @@
 package com.horizon.jarvis;
 
 import android.Manifest;
-import android.app.*;
+import android.app.Activity;
 import android.content.*;
 import android.content.pm.PackageManager;
-import android.graphics.Color;
-import android.graphics.Typeface;
+import android.graphics.*;
+import android.graphics.drawable.GradientDrawable;
 import android.os.*;
 import android.provider.Settings;
-import android.speech.*;
-import android.speech.tts.*;
 import android.text.InputType;
 import android.view.*;
 import android.widget.*;
-
-import android.security.keystore.KeyGenParameterSpec;
-import android.security.keystore.KeyProperties;
-import java.security.KeyStore;
-import javax.crypto.*;
-import javax.crypto.spec.GCMParameterSpec;
-
-import org.json.*;
-import java.io.*;
-import java.net.*;
-import java.nio.charset.StandardCharsets;
-import java.text.SimpleDateFormat;
 import java.util.*;
 
 public class MainActivity extends Activity {
-    static final String ACTION_START = "com.horizon.jarvis.START";
-    static final String ACTION_STOP = "com.horizon.jarvis.STOP";
-    static final String ACTION_QUERY = "com.horizon.jarvis.QUERY";
+    static final String PREFS = "jarvis_v2";
     static final String EVENT = "com.horizon.jarvis.EVENT";
-    private static final int PERMISSIONS_REQUEST = 17;
-    private TextView status;
-    private EditText question;
-    private EditText keyInput;
-    private boolean registered;
+    static final String START = "com.horizon.jarvis.START";
+    static final String STOP = "com.horizon.jarvis.STOP";
+    static final String QUERY = "com.horizon.jarvis.QUERY";
+    private static final int PERMISSIONS = 400;
+    private static final int CYAN = Color.rgb(0, 222, 255);
+    private static final int DARK = Color.rgb(5, 15, 28);
+    private LinearLayout transcript;
+    private TextView state;
+    private TextView overlayHint;
+    private ScrollView messagesScroll;
+    private boolean receiverAdded;
 
-    private final BroadcastReceiver updateReceiver = new BroadcastReceiver() {
+    private final BroadcastReceiver events = new BroadcastReceiver() {
         @Override public void onReceive(Context context, Intent intent) {
-            if (status != null) status.setText(intent.getStringExtra("message"));
+            String message = intent.getStringExtra("message");
+            if (message == null) return;
+            state.setText(message);
+            String role = intent.getStringExtra("role");
+            if (role != null && ("user".equals(role) || "assistant".equals(role))) addLine(role, message);
         }
     };
 
-    private int dp(float value) { return (int)(value * getResources().getDisplayMetrics().density + .5f); }
+    private int px(float dp) { return (int)(getResources().getDisplayMetrics().density * dp + .5f); }
 
-    private TextView label(String value, int size, int color) {
-        TextView result = new TextView(this);
-        result.setText(value);
-        result.setTextColor(color);
-        result.setTextSize(size);
-        result.setPadding(0, dp(13), 0, dp(10));
-        return result;
+    static GradientDrawable bg(int color, int border, int radius) {
+        GradientDrawable d = new GradientDrawable();
+        d.setColor(color);
+        d.setCornerRadius(radius);
+        d.setStroke(1, border);
+        return d;
     }
 
-    @Override public void onCreate(Bundle savedState) {
-        super.onCreate(savedState);
-        int cyan = Color.rgb(89, 234, 244);
-        LinearLayout content = new LinearLayout(this);
-        content.setOrientation(LinearLayout.VERTICAL);
-        content.setPadding(dp(24), dp(28), dp(24), dp(30));
-        content.setBackgroundColor(Color.rgb(7, 16, 27));
-        ScrollView scroll = new ScrollView(this);
-        scroll.setFillViewport(true);
-        scroll.addView(content);
-        setContentView(scroll);
+    private TextView text(String s, int size, int color) {
+        TextView t = new TextView(this);
+        t.setText(s);
+        t.setTextSize(size);
+        t.setTextColor(color);
+        return t;
+    }
 
-        TextView title = label("J.A.R.V.I.S.", 34, cyan);
-        title.setGravity(Gravity.CENTER);
-        title.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
-        content.addView(title);
-        TextView subtitle = label("ANDROID 14  •  VOICE AI  •  v0.1", 12, Color.LTGRAY);
+    private Button action(String label) {
+        Button b = new Button(this);
+        b.setText(label);
+        b.setTextColor(Color.WHITE);
+        b.setTextSize(12);
+        b.setAllCaps(false);
+        b.setBackground(bg(Color.rgb(9, 48, 69), CYAN, px(12)));
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, px(49));
+        lp.topMargin = px(9);
+        b.setLayoutParams(lp);
+        return b;
+    }
+
+    @Override public void onCreate(Bundle stateBundle) {
+        super.onCreate(stateBundle);
+        getWindow().setStatusBarColor(DARK);
+        getWindow().setNavigationBarColor(DARK);
+        ScrollView rootScroll = new ScrollView(this);
+        rootScroll.setFillViewport(true);
+        rootScroll.setBackgroundColor(DARK);
+        LinearLayout root = new LinearLayout(this);
+        root.setOrientation(LinearLayout.VERTICAL);
+        root.setPadding(px(20), px(18), px(20), px(20));
+        rootScroll.addView(root);
+        setContentView(rootScroll);
+
+        TextView headline = text("J.A.R.V.I.S.", 32, CYAN);
+        headline.setTypeface(Typeface.create("sans-serif-light", Typeface.BOLD));
+        headline.setGravity(Gravity.CENTER);
+        root.addView(headline);
+
+        TextView subtitle = text("PERSONAL ARTIFICIAL INTELLIGENCE  //  02", 10, 0xFF7EAEC7);
         subtitle.setGravity(Gravity.CENTER);
-        content.addView(subtitle);
-        TextView orb = label("◉", 115, cyan);
-        orb.setGravity(Gravity.CENTER);
-        content.addView(orb);
+        subtitle.setLetterSpacing(.1f);
+        root.addView(subtitle);
 
-        status = label("Готов. Нажмите «АКТИВИРОВАТЬ»", 16, Color.WHITE);
-        status.setGravity(Gravity.CENTER);
-        content.addView(status);
+        Orb orb = new Orb(this);
+        LinearLayout.LayoutParams orbParams = new LinearLayout.LayoutParams(-1, px(248));
+        orbParams.topMargin = px(9);
+        root.addView(orb, orbParams);
 
-        Button start = new Button(this);
-        start.setText("АКТИВИРОВАТЬ ДЖАРВИСА");
-        content.addView(start);
-        start.setOnClickListener(v -> startWithPermissions());
+        this.state = text("Система ожидает запуска", 16, Color.WHITE);
+        this.state.setGravity(Gravity.CENTER);
+        root.addView(this.state);
 
-        Button stop = new Button(this);
-        stop.setText("ОСТАНОВИТЬ");
-        content.addView(stop);
-        stop.setOnClickListener(v -> startService(new Intent(this, VoiceService.class).setAction(ACTION_STOP)));
+        TextView caption = text("АКТИВАЦИЯ: «ДЖАРВИС»   •   ANDROID 14", 11, 0xFF84B3C9);
+        caption.setGravity(Gravity.CENTER);
+        caption.setPadding(0, px(10), 0, px(6));
+        root.addView(caption);
 
-        content.addView(label("Текстовая команда", 15, cyan));
-        question = new EditText(this);
-        question.setSingleLine(false);
-        question.setMinLines(1);
-        question.setTextColor(Color.WHITE);
-        question.setHintTextColor(Color.LTGRAY);
-        question.setHint("Например: какая сегодня погода?");
-        content.addView(question);
-        Button send = new Button(this);
-        send.setText("ОТПРАВИТЬ");
-        content.addView(send);
+        Button start = action("◉   ЗАПУСТИТЬ ГОЛОСОВОЙ РЕЖИМ");
+        root.addView(start);
+        start.setOnClickListener(v -> startWithPermission());
+        Button stop = action("■   ОСТАНОВИТЬ АССИСТЕНТА");
+        root.addView(stop);
+        stop.setOnClickListener(v -> startService(new Intent(this, JarvisService.class).setAction(STOP)));
+
+        TextView sec = text("ПОВЕРХ ДРУГИХ ПРИЛОЖЕНИЙ", 12, CYAN);
+        sec.setPadding(0, px(18), 0, px(7));
+        root.addView(sec);
+        overlayHint = text("", 12, Color.LTGRAY);
+        root.addView(overlayHint);
+        Button permission = action("▣   РАЗРЕШИТЬ ПЛАВАЮЩЕЕ ОКНО");
+        root.addView(permission);
+        permission.setOnClickListener(v -> {
+            if (!Settings.canDrawOverlays(this)) {
+                Intent i = new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                    android.net.Uri.parse("package:" + getPackageName()));
+                startActivity(i);
+            } else {
+                startWithPermission();
+            }
+        });
+
+        TextView askTitle = text("ДИАЛОГ С JARVIS", 12, CYAN);
+        askTitle.setPadding(0, px(22), 0, px(8));
+        root.addView(askTitle);
+        messagesScroll = new ScrollView(this);
+        messagesScroll.setBackground(bg(0xFF071C2C, 0xFF15577B, px(14)));
+        transcript = new LinearLayout(this);
+        transcript.setOrientation(LinearLayout.VERTICAL);
+        transcript.setPadding(px(13), px(13), px(13), px(13));
+        messagesScroll.addView(transcript);
+        root.addView(messagesScroll, new LinearLayout.LayoutParams(-1, px(176)));
+        addLine("assistant", "Система готова. Произнесите «Джарвис» после запуска прослушивания.");
+
+        EditText input = new EditText(this);
+        input.setSingleLine(false);
+        input.setMaxLines(3);
+        input.setTextSize(14);
+        input.setTextColor(Color.WHITE);
+        input.setHintTextColor(0xFF82A3B5);
+        input.setHint("Написать Джарвису...");
+        root.addView(input);
+        Button send = action("➤   ОТПРАВИТЬ");
+        root.addView(send);
         send.setOnClickListener(v -> {
-            String q = question.getText().toString().trim();
+            String q = input.getText().toString().trim();
             if (q.isEmpty()) return;
-            Intent intent = new Intent(this, VoiceService.class).setAction(ACTION_QUERY).putExtra("query", q);
-            if (Build.VERSION.SDK_INT >= 26) startForegroundService(intent);
-            else startService(intent);
-            question.setText("");
+            if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+                state.setText("Для запуска помощника нужен доступ к микрофону.");
+                return;
+            }
+            Intent i = new Intent(this, JarvisService.class).setAction(QUERY).putExtra("query", q);
+            startForegroundService(i);
+            input.setText("");
         });
 
-        content.addView(label("Ключ OpenAI API (хранится зашифрованно)", 15, cyan));
-        keyInput = new EditText(this);
-        keyInput.setSingleLine(true);
-        keyInput.setTextColor(Color.WHITE);
-        keyInput.setHintTextColor(Color.LTGRAY);
-        keyInput.setHint("sk-...");
-        keyInput.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
-        content.addView(keyInput);
-        Button save = new Button(this);
-        save.setText("СОХРАНИТЬ API-КЛЮЧ");
-        content.addView(save);
+        TextView settingsTitle = text("НАСТРОЙКИ ИИ", 12, CYAN);
+        settingsTitle.setPadding(0, px(22), 0, px(8));
+        root.addView(settingsTitle);
+        EditText apiKey = new EditText(this);
+        apiKey.setTextSize(14);
+        apiKey.setTextColor(Color.WHITE);
+        apiKey.setSingleLine(true);
+        apiKey.setHintTextColor(0xFF82A3B5);
+        apiKey.setHint(JarvisBrain.hasKey(this) ? "Ключ сохранён — введите новый для замены" : "OpenAI API key (sk-...)");
+        apiKey.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
+        root.addView(apiKey);
+        Button save = action("СОХРАНИТЬ API-КЛЮЧ");
+        root.addView(save);
         save.setOnClickListener(v -> {
-            String value = keyInput.getText().toString().trim();
-            if (value.isEmpty()) { status.setText("Введите API-ключ."); return; }
+            String value = apiKey.getText().toString().trim();
+            if (value.isEmpty()) { this.state.setText("Введите API-ключ"); return; }
             try {
-                KeyVault.save(this, value);
-                keyInput.setText("");
-                status.setText("API-ключ сохранён на устройстве.");
-            } catch (Exception e) { status.setText("Ошибка сохранения ключа: " + e.getClass().getSimpleName()); }
+                JarvisBrain.saveKey(this, value);
+                apiKey.setText("");
+                apiKey.setHint("Ключ сохранён — введите новый для замены");
+                this.state.setText("Ключ зашифрован и сохранён только на телефоне.");
+            } catch (Exception e) { this.state.setText("Не удалось сохранить ключ."); }
         });
-        content.addView(label("Активация: «Джарвис» или «Джарвис, открой YouTube». Для голоса нужен системный распознаватель русской речи.", 13, Color.LTGRAY));
+        Switch cloudVoice = new Switch(this);
+        cloudVoice.setText("Голос ИИ (сгенерированное аудио; оплачивается через API)");
+        cloudVoice.setTextSize(12);
+        cloudVoice.setTextColor(Color.WHITE);
+        cloudVoice.setPadding(0, px(13), 0, px(10));
+        cloudVoice.setChecked(getSharedPreferences(PREFS, MODE_PRIVATE).getBoolean("cloud_voice", true));
+        cloudVoice.setOnCheckedChangeListener((b, on) ->
+            getSharedPreferences(PREFS, MODE_PRIVATE).edit().putBoolean("cloud_voice", on).apply());
+        root.addView(cloudVoice);
+
+        TextView info = text("Голос синтезирован ИИ и не принадлежит актёру. Прослушивание работает только после запуска видимого сервиса с уведомлением. Android может приостанавливать распознавание в фоне.", 11, 0xFFA6B9CA);
+        info.setPadding(0, px(18), 0, px(15));
+        root.addView(info);
     }
 
-    private void startWithPermissions() {
-        ArrayList<String> missing = new ArrayList<>();
+    private void addLine(String role, String s) {
+        if (transcript == null) return;
+        TextView item = text(("user".equals(role) ? "ВЫ   " : "JARVIS   ") + s, 13,
+            "user".equals(role) ? 0xFFA7ECFF : Color.WHITE);
+        item.setPadding(px(11), px(10), px(11), px(10));
+        item.setBackground(bg("user".equals(role) ? 0xFF10384E : 0xFF10293B, 0xFF225C7A, px(12)));
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
+        lp.bottomMargin = px(7);
+        transcript.addView(item, lp);
+        if (transcript.getChildCount() > 25) transcript.removeViewAt(0);
+        messagesScroll.post(() -> messagesScroll.fullScroll(View.FOCUS_DOWN));
+    }
+
+    private void startWithPermission() {
+        ArrayList<String> pending = new ArrayList<>();
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED)
-            missing.add(Manifest.permission.RECORD_AUDIO);
+            pending.add(Manifest.permission.RECORD_AUDIO);
         if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED)
-            missing.add(Manifest.permission.POST_NOTIFICATIONS);
-        if (!missing.isEmpty()) {
-            requestPermissions(missing.toArray(new String[0]), PERMISSIONS_REQUEST);
-            return;
-        }
-        Intent i = new Intent(this, VoiceService.class).setAction(ACTION_START);
+            pending.add(Manifest.permission.POST_NOTIFICATIONS);
+        if (!pending.isEmpty()) { requestPermissions(pending.toArray(new String[0]), PERMISSIONS); return; }
+        Intent i = new Intent(this, JarvisService.class).setAction(START);
         startForegroundService(i);
-        status.setText("Запускаю микрофон...");
+        state.setText("Активирую JARVIS...");
     }
-
-    @Override public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] results) {
-        super.onRequestPermissionsResult(requestCode, permissions, results);
-        if (requestCode == PERMISSIONS_REQUEST) {
-            if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) startWithPermissions();
-            else status.setText("Для активации нужен доступ к микрофону.");
+    @Override public void onRequestPermissionsResult(int req, String[] perms, int[] grants) {
+        super.onRequestPermissionsResult(req, perms, grants);
+        if (req == PERMISSIONS) {
+            if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) startWithPermission();
+            else state.setText("Доступ к микрофону не предоставлен.");
         }
     }
-
+    @Override protected void onResume() {
+        super.onResume();
+        if (overlayHint != null) overlayHint.setText(Settings.canDrawOverlays(this)
+            ? "✓ Разрешение получено: плавающий JARVIS будет отображаться при запуске"
+            : "Разрешите показ поверх окон — появится перетаскиваемый JARVIS");
+    }
     @Override protected void onStart() {
         super.onStart();
         IntentFilter filter = new IntentFilter(EVENT);
-        if (Build.VERSION.SDK_INT >= 33) registerReceiver(updateReceiver, filter, Context.RECEIVER_NOT_EXPORTED);
-        else registerReceiver(updateReceiver, filter);
-        registered = true;
+        if (Build.VERSION.SDK_INT >= 33) registerReceiver(events, filter, Context.RECEIVER_NOT_EXPORTED);
+        else registerReceiver(events, filter);
+        receiverAdded = true;
     }
     @Override protected void onStop() {
-        if (registered) unregisterReceiver(updateReceiver);
-        registered = false;
+        if (receiverAdded) unregisterReceiver(events);
+        receiverAdded = false;
         super.onStop();
     }
 
-    static class KeyVault {
-        static final String ALIAS = "jarvis_key_v1";
-        static void save(Context ctx, String apiKey) throws Exception {
-            KeyStore ks = KeyStore.getInstance("AndroidKeyStore");
-            ks.load(null);
-            if (!ks.containsAlias(ALIAS)) {
-                KeyGenerator generator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore");
-                generator.init(new KeyGenParameterSpec.Builder(ALIAS,
-                    KeyProperties.PURPOSE_ENCRYPT | KeyProperties.PURPOSE_DECRYPT)
-                    .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
-                    .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE).build());
-                generator.generateKey();
+    private static class Orb extends View {
+        private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        Orb(Context context) { super(context); setLayerType(View.LAYER_TYPE_SOFTWARE, null); }
+        @Override protected void onDraw(Canvas canvas) {
+            super.onDraw(canvas);
+            float w = getWidth(), h = getHeight();
+            float cx = w / 2f, cy = h / 2f;
+            float r = Math.min(w, h) * .39f;
+            long t = android.os.SystemClock.uptimeMillis();
+            paint.setStyle(Paint.Style.STROKE);
+            for (int i = 0; i < 9; i++) {
+                float radius = r * (.45f + i * .067f);
+                paint.setStrokeWidth(i % 3 == 0 ? 2.4f : .85f);
+                paint.setColor(Color.argb(65 + (i * 15) % 130, 0, 195 + i * 6, 255));
+                canvas.drawCircle(cx, cy, radius, paint);
             }
-            Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
-            cipher.init(Cipher.ENCRYPT_MODE, (java.security.Key)ks.getKey(ALIAS, null));
-            byte[] encrypted = cipher.doFinal(apiKey.getBytes(StandardCharsets.UTF_8));
-            ctx.getSharedPreferences("jarvis", MODE_PRIVATE).edit()
-                .putString("enc", android.util.Base64.encodeToString(encrypted, android.util.Base64.NO_WRAP))
-                .putString("iv", android.util.Base64.encodeToString(cipher.getIV(), android.util.Base64.NO_WRAP))
-                .apply();
-        }
-        static String load(Context ctx) {
-            try {
-                android.content.SharedPreferences prefs = ctx.getSharedPreferences("jarvis", MODE_PRIVATE);
-                String encrypted = prefs.getString("enc", "");
-                String iv = prefs.getString("iv", "");
-                if (encrypted.isEmpty() || iv.isEmpty()) return "";
-                KeyStore ks = KeyStore.getInstance("AndroidKeyStore");
-                ks.load(null);
-                Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
-                cipher.init(Cipher.DECRYPT_MODE, (java.security.Key)ks.getKey(ALIAS, null),
-                    new GCMParameterSpec(128, android.util.Base64.decode(iv, android.util.Base64.NO_WRAP)));
-                return new String(cipher.doFinal(android.util.Base64.decode(encrypted, android.util.Base64.NO_WRAP)), StandardCharsets.UTF_8);
-            } catch (Exception e) { return ""; }
-        }
-    }
-
-    public static class VoiceService extends Service implements RecognitionListener {
-        private static final String CHANNEL = "jarvis_listening";
-        private final Handler handler = new Handler(Looper.getMainLooper());
-        private SpeechRecognizer recognizer;
-        private TextToSpeech tts;
-        private boolean running, listening, speaking, busy, ttsReady;
-        private long nextCommandUntil;
-        private Runnable restart;
-
-        @Override public void onCreate() {
-            super.onCreate();
-            NotificationManager manager = getSystemService(NotificationManager.class);
-            manager.createNotificationChannel(new NotificationChannel(CHANNEL, "JARVIS — голос", NotificationManager.IMPORTANCE_LOW));
-            tts = new TextToSpeech(this, result -> {
-                if (result == TextToSpeech.SUCCESS && tts != null) {
-                    ttsReady = tts.setLanguage(new Locale("ru", "RU")) >= 0;
-                    tts.setOnUtteranceProgressListener(new UtteranceProgressListener() {
-                        @Override public void onStart(String id) {}
-                        @Override public void onDone(String id) { handler.post(() -> finishTalking()); }
-                        @Override public void onError(String id) { handler.post(() -> finishTalking()); }
-                    });
-                }
-            });
-        }
-
-        @Override public int onStartCommand(Intent intent, int flags, int startId) {
-            String action = intent == null ? ACTION_START : intent.getAction();
-            if (ACTION_STOP.equals(action)) { stopSelf(); return START_NOT_STICKY; }
-            if (!running) {
-                if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
-                    emit("Нет доступа к микрофону"); stopSelf(); return START_NOT_STICKY;
-                }
-                try {
-                    startForeground(1, notification("Слушаю фразу «Джарвис»"),
-                        android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE);
-                    running = true;
-                    emit("Слушаю фразу «Джарвис»");
-                    if (SpeechRecognizer.isRecognitionAvailable(this)) {
-                        recognizer = SpeechRecognizer.createSpeechRecognizer(this);
-                        recognizer.setRecognitionListener(this);
-                        schedule(500);
-                    } else emit("Распознавание речи недоступно. Используйте текстовые команды.");
-                } catch (Exception e) { emit("Не удалось начать прослушивание: " + e.getClass().getSimpleName()); stopSelf(); return START_NOT_STICKY; }
-            }
-            if (ACTION_QUERY.equals(action) && intent != null) {
-                String text = intent.getStringExtra("query");
-                if (text != null && !text.trim().isEmpty()) {
-                    cancelListen();
-                    command(text.trim());
-                }
-            }
-            return START_NOT_STICKY;
-        }
-
-        private Notification notification(String message) {
-            Intent open = new Intent(this, MainActivity.class);
-            PendingIntent contentIntent = PendingIntent.getActivity(this, 1, open,
-                PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
-            Intent stopIntent = new Intent(this, VoiceService.class).setAction(ACTION_STOP);
-            PendingIntent stopIntentPending = PendingIntent.getService(this, 2, stopIntent,
-                PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
-            return new Notification.Builder(this, CHANNEL)
-                .setSmallIcon(android.R.drawable.ic_btn_speak_now)
-                .setContentTitle("JARVIS AI").setContentText(message)
-                .setContentIntent(contentIntent).setOngoing(true)
-                .addAction(android.R.drawable.ic_menu_close_clear_cancel, "СТОП", stopIntentPending).build();
-        }
-
-        private void emit(String msg) {
-            Intent status = new Intent(EVENT);
-            status.setPackage(getPackageName());
-            status.putExtra("message", msg);
-            sendBroadcast(status);
-        }
-
-        private void cancelListen() {
-            if (restart != null) handler.removeCallbacks(restart);
-            restart = null;
-            if (recognizer != null && listening) {
-                listening = false;
-                recognizer.cancel();
-            }
-        }
-
-        private void schedule(long delay) {
-            if (restart != null) handler.removeCallbacks(restart);
-            if (!running || recognizer == null || listening || busy || speaking) return;
-            restart = () -> {
-                restart = null;
-                if (!running || busy || speaking || listening) return;
-                try {
-                    Intent i = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
-                    i.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
-                    i.putExtra(RecognizerIntent.EXTRA_LANGUAGE, "ru-RU");
-                    i.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3);
-                    recognizer.startListening(i);
-                    listening = true;
-                } catch (Exception e) { schedule(3000); }
-            };
-            handler.postDelayed(restart, delay);
-        }
-
-        private void finishTalking() {
-            speaking = false;
-            busy = false;
-            schedule(550);
-        }
-
-        private void say(String text) {
-            emit(text);
-            if (tts != null && ttsReady) {
-                speaking = true;
-                if (tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, "jarvis_reply") == TextToSpeech.ERROR) finishTalking();
-            } else finishTalking();
-        }
-
-        private void onSpeechText(String raw) {
-            String s = raw.trim();
-            String lower = s.toLowerCase(Locale.ROOT).replace('ё', 'е');
-            int idx = -1, length = 0;
-            for (String word : new String[]{"джарвис", "жарвис", "джервис", "jarvis"}) {
-                int i = lower.indexOf(word);
-                if (i >= 0 && (idx < 0 || i < idx)) { idx = i; length = word.length(); }
-            }
-            if (idx >= 0) {
-                String after = s.substring(idx + length).replaceFirst("^[\\s,.:!?—-]+", "").trim();
-                if (after.isEmpty()) {
-                    nextCommandUntil = SystemClock.elapsedRealtime() + 12000;
-                    say("Слушаю, сэр.");
-                } else {
-                    nextCommandUntil = 0;
-                    command(after);
-                }
-            } else if (SystemClock.elapsedRealtime() < nextCommandUntil) {
-                nextCommandUntil = 0;
-                command(s);
-            } else schedule(600);
-        }
-
-        private void command(String question) {
-            if (busy) return;
-            busy = true;
-            String text = question.length() > 1200 ? question.substring(0, 1200) : question;
-            String s = text.toLowerCase(Locale.ROOT).replace('ё', 'е');
-            emit("Команда: " + text);
-            if (s.contains("сколько времени") || s.contains("который час") || s.equals("время")) {
-                say("Сейчас " + new SimpleDateFormat("HH:mm", new Locale("ru", "RU")).format(new Date()));
-            } else if (s.contains("заряд") || s.contains("батаре")) {
-                android.os.BatteryManager b = getSystemService(android.os.BatteryManager.class);
-                say("Заряд батареи: " + b.getIntProperty(android.os.BatteryManager.BATTERY_PROPERTY_CAPACITY) + " процентов.");
-            } else if (s.contains("остановись") || s.contains("выключись") || s.contains("прекрати слушать")) {
-                emit("Отключаюсь.");
-                stopSelf();
-            } else if (s.contains("открой") || s.contains("запусти")) {
-                openCommand(s);
-            } else if (s.contains("привет") || s.contains("ты тут")) {
-                say("Всегда к вашим услугам, сэр.");
-            } else {
-                String key = KeyVault.load(this);
-                if (key.isEmpty()) { say("Сохраните ключ OpenAI API в приложении, чтобы задавать вопросы искусственному интеллекту."); return; }
-                emit("Связываюсь с ИИ...");
-                new Thread(() -> {
-                    String response;
-                    try { response = askOpenAi(key, text); }
-                    catch (Exception e) { response = "Ошибка запроса: " + e.getClass().getSimpleName(); }
-                    final String answer = response;
-                    handler.post(() -> { if (running) say(answer); });
-                }, "jarvis-ai-request").start();
-            }
-        }
-
-        private void openCommand(String query) {
-            String pkg = null;
-            if (query.contains("ютуб") || query.contains("youtube")) pkg = "com.google.android.youtube";
-            else if (query.contains("телеграм") || query.contains("telegram")) pkg = "org.telegram.messenger";
-            else if (query.contains("майнкрафт") || query.contains("minecraft")) pkg = "com.mojang.minecraftpe";
-            Intent launch = null;
-            if (pkg != null) launch = getPackageManager().getLaunchIntentForPackage(pkg);
-            else if (query.contains("настрой")) launch = new Intent(Settings.ACTION_SETTINGS);
-            else if (query.contains("браузер")) launch = new Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://www.google.com"));
-            if (launch == null) { say("Не удалось найти нужное приложение."); return; }
-            launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-            try {
-                // Background activity launches are restricted: show an actionable notification.
-                PendingIntent pending = PendingIntent.getActivity(this, 42, launch,
-                    PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
-                NotificationManager nm = getSystemService(NotificationManager.class);
-                nm.notify(9, new Notification.Builder(this, CHANNEL)
-                    .setSmallIcon(android.R.drawable.ic_menu_compass)
-                    .setContentTitle("JARVIS — открыть приложение")
-                    .setContentText("Нажмите для запуска").setContentIntent(pending).setAutoCancel(true).build());
-                say("Подготовил запуск. Нажмите на уведомление.");
-            } catch (Exception e) { say("Не удалось открыть приложение."); }
-        }
-
-        private static String askOpenAi(String apiKey, String question) throws Exception {
-            URL url = new URL("https://api.openai.com/v1/responses");
-            HttpURLConnection connection = (HttpURLConnection)url.openConnection();
-            try {
-                connection.setRequestMethod("POST");
-                connection.setConnectTimeout(15000);
-                connection.setReadTimeout(35000);
-                connection.setDoOutput(true);
-                connection.setRequestProperty("Authorization", "Bearer " + apiKey);
-                connection.setRequestProperty("Content-Type", "application/json; charset=utf-8");
-                JSONObject body = new JSONObject();
-                body.put("model", "gpt-4.1-mini");
-                body.put("store", false);
-                body.put("instructions", "Ты Джарвис, краткий вежливый голосовой помощник на русском. Отвечай обычно не более двух предложений. Не притворяйся, что управляешь функциями, к которым нет доступа.");
-                body.put("input", question);
-                try (OutputStream out = connection.getOutputStream()) {
-                    out.write(body.toString().getBytes(StandardCharsets.UTF_8));
-                }
-                int code = connection.getResponseCode();
-                InputStream stream = code >= 200 && code < 300 ? connection.getInputStream() : connection.getErrorStream();
-                if (stream == null) return "Сервис ИИ временно недоступен.";
-                ByteArrayOutputStream buffer = new ByteArrayOutputStream();
-                byte[] part = new byte[4096];
-                int n;
-                try (InputStream input = stream) {
-                    while ((n = input.read(part)) != -1 && buffer.size() < 150000) buffer.write(part, 0, n);
-                }
-                JSONObject json = new JSONObject(buffer.toString("UTF-8"));
-                if (code < 200 || code >= 300) {
-                    JSONObject error = json.optJSONObject("error");
-                    return "Ошибка API: " + (error == null ? code : error.optString("message", String.valueOf(code)));
-                }
-                JSONArray items = json.optJSONArray("output");
-                StringBuilder output = new StringBuilder();
-                if (items != null) for (int i = 0; i < items.length(); i++) {
-                    JSONObject item = items.optJSONObject(i);
-                    if (item == null) continue;
-                    JSONArray parts = item.optJSONArray("content");
-                    if (parts == null) continue;
-                    for (int j = 0; j < parts.length(); j++) {
-                        JSONObject piece = parts.optJSONObject(j);
-                        if (piece != null && "output_text".equals(piece.optString("type")))
-                            output.append(piece.optString("text")).append(' ');
-                    }
-                }
-                String result = output.toString().trim();
-                return result.isEmpty() ? "Ответ от ИИ не получен." : result.substring(0, Math.min(result.length(), 1600));
-            } finally { connection.disconnect(); }
-        }
-
-        @Override public void onReadyForSpeech(Bundle b) {}
-        @Override public void onBeginningOfSpeech() {}
-        @Override public void onRmsChanged(float rms) {}
-        @Override public void onBufferReceived(byte[] buffer) {}
-        @Override public void onEndOfSpeech() {}
-        @Override public void onPartialResults(Bundle partial) {}
-        @Override public void onEvent(int type, Bundle b) {}
-        @Override public void onError(int error) {
-            listening = false;
-            if (running && !busy && !speaking) schedule(error == SpeechRecognizer.ERROR_RECOGNIZER_BUSY ? 3000 : 1000);
-        }
-        @Override public void onResults(Bundle b) {
-            listening = false;
-            ArrayList<String> results = b.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
-            if (results != null && !results.isEmpty()) onSpeechText(results.get(0));
-            else schedule(600);
-        }
-        @Override public IBinder onBind(Intent i) { return null; }
-        @Override public void onDestroy() {
-            running = false;
-            cancelListen();
-            if (recognizer != null) recognizer.destroy();
-            if (tts != null) { tts.stop(); tts.shutdown(); }
-            super.onDestroy();
+            paint.setStrokeWidth(5);
+            paint.setColor(0xFF00DFFF);
+            canvas.drawArc(cx - r, cy - r, cx + r, cy + r, (t / 28f) % 360f, 92, false, paint);
+            paint.setColor(0xFF4B8EFF);
+            paint.setStrokeWidth(3);
+            canvas.drawArc(cx - r * .7f, cy - r * .7f, cx + r * .7f, cy + r * .7f, 270 - (t / 41f) % 360f, 55, false, paint);
+            paint.setStyle(Paint.Style.FILL);
+            paint.setColor(0xCC0B385D);
+            canvas.drawCircle(cx, cy, r * .45f, paint);
+            paint.setColor(0xFF9BEAFF);
+            paint.setTextSize(r * .19f);
+            paint.setTextAlign(Paint.Align.CENTER);
+            paint.setTypeface(Typeface.create("sans-serif-medium", Typeface.BOLD));
+            canvas.drawText("J.A.R.V.I.S.", cx, cy + r * .05f, paint);
+            paint.setTextSize(r * .095f);
+            paint.setColor(0xFF5FD4F5);
+            canvas.drawText("VOICE AI  •  ONLINE", cx, cy + r * .2f, paint);
+            postInvalidateDelayed(45);
         }
     }
 }
