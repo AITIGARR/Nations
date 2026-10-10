@@ -15,7 +15,7 @@ import java.util.*;
 import java.util.concurrent.*;
 
 public class JarvisService extends Service implements RecognitionListener, JarvisOverlay.Listener {
-    private static final String CHANNEL = "jarvis_voice_v2";
+    private static final String CHANNEL = "jarvis_voice_v3";
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final ExecutorService network = Executors.newSingleThreadExecutor();
     private final ArrayList<org.json.JSONObject> conversation = new ArrayList<>();
@@ -132,7 +132,7 @@ public class JarvisService extends Service implements RecognitionListener, Jarvi
                 speech.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL,
                     RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
                 speech.putExtra(RecognizerIntent.EXTRA_LANGUAGE, "ru-RU");
-                speech.putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, false);
+                speech.putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true);
                 speech.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3);
                 listening = true;
                 recognizer.startListening(speech);
@@ -156,7 +156,7 @@ public class JarvisService extends Service implements RecognitionListener, Jarvi
             if (tail.isEmpty()) {
                 nextCommandUntil = SystemClock.elapsedRealtime() + 15000;
                 busy = true;
-                speak("Слушаю.", false);
+                speak("Слушаю.", true);
             } else {
                 nextCommandUntil = 0;
                 command(tail);
@@ -182,20 +182,21 @@ public class JarvisService extends Service implements RecognitionListener, Jarvi
         publish(q, "user");
 
         if (lower.contains("сколько времени") || lower.contains("который час") || lower.equals("время")) {
-            speak("Сейчас " + new SimpleDateFormat("HH:mm", new Locale("ru", "RU")).format(new Date()), false);
+            speak("Сейчас " + new SimpleDateFormat("HH:mm", new Locale("ru", "RU")).format(new Date()), true);
         } else if (lower.contains("заряд") || lower.contains("батаре")) {
             android.os.BatteryManager battery = getSystemService(android.os.BatteryManager.class);
-            speak("Заряд батареи " + battery.getIntProperty(android.os.BatteryManager.BATTERY_PROPERTY_CAPACITY) + " процентов.", false);
+            speak("Заряд батареи " + battery.getIntProperty(android.os.BatteryManager.BATTERY_PROPERTY_CAPACITY) + " процентов.", true);
         } else if (lower.contains("остановись") || lower.contains("выключись") || lower.contains("прекрати слушать")) {
             publish("Отключаюсь.", "assistant"); stopSelf();
-        } else if (lower.contains("открой") || lower.contains("запусти")) {
-            openApplication(lower);
+        } else if (isDeviceCommand(lower)) {
+            String outcome = JarvisActions.handle(this, overlay, lower);
+            speak(outcome == null ? "Команда не распознана." : outcome, true);
         } else if (lower.equals("привет") || lower.contains("ты тут")) {
-            speak("Я на связи. Чем могу помочь?", false);
+            speak("Я на связи. Чем могу помочь?", true);
         } else {
             String key = JarvisBrain.getKey(this);
             if (key.isEmpty()) {
-                speak("Добавьте OpenAI API-ключ в настройках JARVIS для полноценного общения с искусственным интеллектом.", false);
+                speak("Добавьте OpenAI API-ключ в настройках JARVIS для полноценного общения с искусственным интеллектом.", true);
                 return;
             }
             publish("Обдумываю ответ...", "system");
@@ -217,32 +218,17 @@ public class JarvisService extends Service implements RecognitionListener, Jarvi
         }
     }
 
-    private void openApplication(String query) {
-        Intent launch = null;
-        String pkg = null;
-        if (query.contains("youtube") || query.contains("ютуб")) pkg = "com.google.android.youtube";
-        else if (query.contains("telegram") || query.contains("телеграм")) pkg = "org.telegram.messenger";
-        else if (query.contains("minecraft") || query.contains("майнкрафт")) pkg = "com.mojang.minecraftpe";
-        if (pkg != null) launch = getPackageManager().getLaunchIntentForPackage(pkg);
-        else if (query.contains("настрой")) launch = new Intent(Settings.ACTION_SETTINGS);
-        else if (query.contains("браузер") || query.contains("интернет")) launch =
-            new Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://www.google.com"));
-        if (launch == null) { speak("Такое приложение не найдено или эта команда пока не поддерживается.", false); return; }
-        launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-        try {
-            PendingIntent pending = PendingIntent.getActivity(this, 420, launch,
-                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
-            Notification.Builder notification = new Notification.Builder(this, CHANNEL)
-                .setSmallIcon(android.R.drawable.ic_menu_compass)
-                .setContentTitle("JARVIS — открыть приложение")
-                .setContentText("Нажмите, чтобы выполнить команду.")
-                .setContentIntent(pending)
-                .setAutoCancel(true);
-            getSystemService(NotificationManager.class).notify(9, notification.build());
-            speak("Готово. Нажмите на уведомление для запуска.", false);
-        } catch (Exception e) {
-            speak("Не удалось подготовить запуск.", false);
-        }
+    private boolean isDeviceCommand(String q) {
+        return q.startsWith("открой ") || q.startsWith("запусти ") ||
+            q.startsWith("включи приложение ") || q.startsWith("открыть ") ||
+            q.startsWith("покажи приложение ") || q.startsWith("зайди в ") ||
+            q.contains("назад") || q.equals("домой") || q.contains("на главный экран") ||
+            q.contains("на рабочий стол") || q.contains("недавние приложения") ||
+            q.contains("последние приложения") || q.contains("покажи уведомления") ||
+            q.contains("открой уведомления") || q.contains("шторку уведомлений") ||
+            q.contains("быстрые настройки") || q.contains("панель быстрых") ||
+            q.contains("прокрути ") || q.contains("листай ") ||
+            q.startsWith("нажми ") || q.startsWith("кликни ");
     }
 
     private void speak(String text, boolean preferCloudVoice) {

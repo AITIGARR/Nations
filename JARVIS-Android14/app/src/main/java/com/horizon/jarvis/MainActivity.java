@@ -131,6 +131,22 @@ public class MainActivity extends Activity {
             }
         });
 
+        TextView controls = text("УПРАВЛЕНИЕ ТЕЛЕФОНОМ", 12, CYAN);
+        controls.setPadding(0, px(17), 0, px(7));
+        root.addView(controls);
+        TextView accessibilityInfo = text("Для команд «домой», «назад», прокрутки и нажатий включите сервис JARVIS в специальных возможностях.", 12, 0xFF93B3C8);
+        root.addView(accessibilityInfo);
+        Button accessibilityButton = action("◈   ОТКРЫТЬ СПЕЦИАЛЬНЫЕ ВОЗМОЖНОСТИ");
+        root.addView(accessibilityButton);
+        accessibilityButton.setOnClickListener(v -> startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)));
+        Button notificationButton = action("◉   НАСТРОЙКИ УВЕДОМЛЕНИЙ");
+        root.addView(notificationButton);
+        notificationButton.setOnClickListener(v -> {
+            Intent i = new Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS);
+            i.putExtra(Settings.EXTRA_APP_PACKAGE, getPackageName());
+            startActivity(i);
+        });
+
         TextView askTitle = text("ДИАЛОГ С JARVIS", 12, CYAN);
         askTitle.setPadding(0, px(22), 0, px(8));
         root.addView(askTitle);

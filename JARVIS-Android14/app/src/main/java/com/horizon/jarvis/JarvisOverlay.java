@@ -24,6 +24,8 @@ final class JarvisOverlay {
     private boolean expanded;
     private TextView latest;
     private String lastText = "Система активна. Скажите «Джарвис».";
+    private android.content.Intent launchRequest;
+    private String launchName;
     private int x, y;
     private float downX, downY;
     private int originX, originY;
@@ -170,7 +172,20 @@ final class JarvisOverlay {
         latest.setPadding(dp(10), dp(12), dp(10), dp(12));
         latest.setBackground(shape(0xFF092C42, 0xFF1A526F, 10));
         scroll.addView(latest);
-        shell.addView(scroll, new LinearLayout.LayoutParams(-1, dp(77)));
+        shell.addView(scroll, new LinearLayout.LayoutParams(-1, launchRequest == null ? dp(77) : dp(54)));
+        if (launchRequest != null) {
+            Button launchButton = button("↗  ОТКРЫТЬ " + launchName);
+            shell.addView(launchButton, new LinearLayout.LayoutParams(-1, dp(42)));
+            launchButton.setOnClickListener(v -> {
+                android.content.Intent target = launchRequest;
+                launchRequest = null;
+                if (target != null) {
+                    try { ctx.startActivity(target); }
+                    catch (Exception ignored) { update("Android запретил открытие. Откройте приложение вручную."); }
+                }
+                draw(false);
+            });
+        }
 
         EditText ask = new EditText(ctx);
         ask.setTextColor(Color.WHITE);
@@ -201,6 +216,13 @@ final class JarvisOverlay {
         });
         stop.setOnClickListener(v -> listener.onStop());
         return shell;
+    }
+
+    void offerLaunch(android.content.Intent target, String label) {
+        launchRequest = target;
+        launchName = label;
+        lastText = "Нажмите кнопку ниже для открытия " + label;
+        draw(true);
     }
 
     void update(String message) {

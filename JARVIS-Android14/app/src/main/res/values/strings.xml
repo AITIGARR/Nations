@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="accessibility_description">JARVIS управляет экраном только по явной голосовой или текстовой команде: назад, домой, прокрутка и нажатие названного элемента. Данные экрана не сохраняются и не передаются.</string>
+</resources>
