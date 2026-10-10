@@ -88,7 +88,7 @@ public class MainActivity extends Activity {
         headline.setGravity(Gravity.CENTER);
         root.addView(headline);
 
-        TextView subtitle = text("PERSONAL ARTIFICIAL INTELLIGENCE  //  02", 10, 0xFF7EAEC7);
+        TextView subtitle = text("PERSONAL ARTIFICIAL INTELLIGENCE  //  05", 10, 0xFF7EAEC7);
         subtitle.setGravity(Gravity.CENTER);
         subtitle.setLetterSpacing(.1f);
         root.addView(subtitle);
@@ -139,6 +139,24 @@ public class MainActivity extends Activity {
         Button accessibilityButton = action("◈   ОТКРЫТЬ СПЕЦИАЛЬНЫЕ ВОЗМОЖНОСТИ");
         root.addView(accessibilityButton);
         accessibilityButton.setOnClickListener(v -> startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)));
+        Button explainAccess = action("ⓘ   ПОЧЕМУ ANDROID БЛОКИРУЕТ ДОСТУП?");
+        root.addView(explainAccess);
+        explainAccess.setOnClickListener(v -> new android.app.AlertDialog.Builder(this)
+            .setTitle("Настройки с ограниченным доступом")
+            .setMessage("Android 13–14 может блокировать специальные возможности для приложений, установленных из APK.\n\n" +
+                "Если вы доверяете этой сборке:\n" +
+                "1. Настройки → Приложения → JARVIS AI.\n" +
+                "2. Меню ⋮ → «Разрешить ограниченные настройки» (если пункт доступен).\n" +
+                "3. Вернитесь в «Специальные возможности» и включите JARVIS.\n\n" +
+                "Разрешение открывает доступ к управлению интерфейсом других приложений. " +
+                "Оно необязательно для времени, даты, заряда и обычных вопросов.")
+            .setNeutralButton("Сведения о приложении", (d, which) -> {
+                Intent i = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                    android.net.Uri.parse("package:" + getPackageName()));
+                startActivity(i);
+            })
+            .setPositiveButton("Понятно", null)
+            .show());
         Button notificationButton = action("◉   НАСТРОЙКИ УВЕДОМЛЕНИЙ");
         root.addView(notificationButton);
         notificationButton.setOnClickListener(v -> {
@@ -173,7 +191,19 @@ public class MainActivity extends Activity {
             String q = input.getText().toString().trim();
             if (q.isEmpty()) return;
             if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
-                state.setText("Для запуска помощника нужен доступ к микрофону.");
+                BasicCommands.Kind basic = BasicCommands.classify(q);
+                if (basic != BasicCommands.Kind.NONE) {
+                    android.os.BatteryManager battery = getSystemService(android.os.BatteryManager.class);
+                    int percentage = battery == null ? -1 :
+                        battery.getIntProperty(android.os.BatteryManager.BATTERY_PROPERTY_CAPACITY);
+                    addLine("user", q);
+                    String response = BasicCommands.answer(basic, new Date(), percentage);
+                    addLine("assistant", response);
+                    state.setText(response);
+                    input.setText("");
+                } else {
+                    state.setText("Разрешите микрофон для голосового режима или запустите JARVIS.");
+                }
                 return;
             }
             Intent i = new Intent(this, JarvisService.class).setAction(QUERY).putExtra("query", q);
@@ -221,6 +251,45 @@ public class MainActivity extends Activity {
             ? "АВТО: доступен интернет и API-ключ → облачный ИИ; нет сети/ошибка API → локальный SmolLM2. Маленькая модель хуже отвечает на русском."
             : "АВТО: при доступном интернете и API-ключе работает облачный ИИ. Без них локальный SmolLM2 автоматически подготовится из APK (нужно около 105 МБ свободного места).", 12, 0xFF93B3C8);
         root.addView(localDetail);
+        TextView strongInfo = text(LocalBrain.hasStrong(this)
+            ? "Улучшенная русскоязычная модель Qwen2.5-0.5B уже установлена."
+            : "Хотите лучшее качество офлайн-ответов? Можно отдельно установить Qwen2.5-0.5B (Apache 2.0). Загрузка около 398 МБ. Для коротких команд не нужна.", 12, 0xFF93B3C8);
+        root.addView(strongInfo);
+        Button strongerModel = action(LocalBrain.hasStrong(this)
+            ? "✓   QWEN2.5 УЖЕ УСТАНОВЛЕНА"
+            : "↓   УСТАНОВИТЬ QWEN2.5 (398 МБ)");
+        root.addView(strongerModel);
+        if (LocalBrain.hasStrong(this)) strongerModel.setEnabled(false);
+        strongerModel.setOnClickListener(v -> new android.app.AlertDialog.Builder(this)
+            .setTitle("Установить Qwen2.5-0.5B?")
+            .setMessage("Это открытая языковая модель, лучше приспособленная к русскому языку, чем встроенная SmolLM2.\n\n" +
+                "Для загрузки понадобится около 398 МБ трафика (Wi-Fi или мобильный интернет) и более 550 МБ свободной памяти. " +
+                "Это не системный ИИ: управление телефоном осуществляется отдельными Android-командами.")
+            .setNegativeButton("Отмена", null)
+            .setPositiveButton("Скачать", (dialog, which) -> {
+                strongerModel.setEnabled(false);
+                new Thread(() -> {
+                    String result;
+                    try {
+                        LocalBrain.downloadStrong(this, progress ->
+                            runOnUiThread(() -> { if (!isFinishing()) state.setText(progress); }));
+                        result = "Модель Qwen2.5 установлена и готова к офлайн-вопросам.";
+                    } catch (Exception e) {
+                        String why = e.getMessage();
+                        result = "Не удалось скачать Qwen: " + (why == null
+                            ? e.getClass().getSimpleName() : why);
+                    }
+                    final String message = result;
+                    runOnUiThread(() -> {
+                        if (!isFinishing()) {
+                            state.setText(message);
+                            strongerModel.setEnabled(!LocalBrain.hasStrong(this));
+                            strongInfo.setText(message);
+                        }
+                    });
+                }, "jarvis-qwen-download").start();
+            }).show());
+
         Switch offline = new Switch(this);
         offline.setText("Всегда офлайн — не использовать интернет для ответов");
         offline.setTextSize(12);

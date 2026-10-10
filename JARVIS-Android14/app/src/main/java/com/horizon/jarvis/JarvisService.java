@@ -24,6 +24,7 @@ public class JarvisService extends Service implements RecognitionListener, Jarvi
     private JarvisOverlay overlay;
     private MediaPlayer player;
     private boolean running, listening, busy, speaking, ttsReady;
+    private String queuedTts;
     private Runnable restart;
     private long nextCommandUntil;
 
@@ -37,6 +38,11 @@ public class JarvisService extends Service implements RecognitionListener, Jarvi
             if (result == TextToSpeech.SUCCESS && tts != null) {
                 ttsReady = tts.setLanguage(new Locale("ru", "RU")) >= 0;
                 tts.setSpeechRate(.94f);
+                if (queuedTts != null && ttsReady) {
+                    String saved = queuedTts;
+                    queuedTts = null;
+                    handler.post(() -> { if (running && speaking) speakOnDevice(saved); });
+                }
                 tts.setPitch(.9f);
                 tts.setOnUtteranceProgressListener(new UtteranceProgressListener() {
                     @Override public void onStart(String id) {}
@@ -156,7 +162,7 @@ public class JarvisService extends Service implements RecognitionListener, Jarvi
             if (tail.isEmpty()) {
                 nextCommandUntil = SystemClock.elapsedRealtime() + 15000;
                 busy = true;
-                speak("Слушаю.", true);
+                speak("Слушаю.", false);
             } else {
                 nextCommandUntil = 0;
                 command(tail);
@@ -181,11 +187,13 @@ public class JarvisService extends Service implements RecognitionListener, Jarvi
         String lower = q.toLowerCase(Locale.ROOT).replace('ё', 'е');
         publish(q, "user");
 
-        if (lower.contains("сколько времени") || lower.contains("который час") || lower.equals("время")) {
-            speak("Сейчас " + new SimpleDateFormat("HH:mm", new Locale("ru", "RU")).format(new Date()), true);
-        } else if (lower.contains("заряд") || lower.contains("батаре")) {
+        BasicCommands.Kind basic = BasicCommands.classify(lower);
+        if (basic != BasicCommands.Kind.NONE) {
             android.os.BatteryManager battery = getSystemService(android.os.BatteryManager.class);
-            speak("Заряд батареи " + battery.getIntProperty(android.os.BatteryManager.BATTERY_PROPERTY_CAPACITY) + " процентов.", true);
+            int percentage = battery == null ? -1 :
+                battery.getIntProperty(android.os.BatteryManager.BATTERY_PROPERTY_CAPACITY);
+            // Deterministic fast reply. Do not block on an online TTS request.
+            speak(BasicCommands.answer(basic, new Date(), percentage), false);
         } else if (lower.contains("остановись") || lower.contains("выключись") || lower.contains("прекрати слушать")) {
             publish("Отключаюсь.", "assistant"); stopSelf();
         } else if (isDeviceCommand(lower)) {
@@ -298,6 +306,15 @@ public class JarvisService extends Service implements RecognitionListener, Jarvi
         if (ttsReady && tts != null) {
             int res = tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, "jarvis_v2_reply");
             if (res == TextToSpeech.ERROR) finishSpeech();
+        } else if (tts != null) {
+            queuedTts = text;
+            handler.postDelayed(() -> {
+                if (queuedTts != null && queuedTts.equals(text)) {
+                    queuedTts = null;
+                    publish("Голос Android не инициализировался. Ответ есть на экране.", "system");
+                    finishSpeech();
+                }
+            }, 4500);
         } else finishSpeech();
     }
 
@@ -323,6 +340,13 @@ public class JarvisService extends Service implements RecognitionListener, Jarvi
     }
     @Override public void onError(int error) {
         listening = false;
+        if (error == SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS) {
+            publish("Распознавание остановлено: разрешение микрофона отозвано.", "system");
+            stopSelf();
+            return;
+        }
+        if (error == SpeechRecognizer.ERROR_NETWORK || error == SpeechRecognizer.ERROR_NETWORK_TIMEOUT)
+            publish("Распознавание речи временно недоступно: проверьте интернет или офлайн-языковой пакет.", "system");
         if (running && !busy && !speaking)
             schedule(error == SpeechRecognizer.ERROR_RECOGNIZER_BUSY ? 3200 : 1500);
     }
@@ -332,6 +356,7 @@ public class JarvisService extends Service implements RecognitionListener, Jarvi
         running = false;
         cancelListen();
         if (recognizer != null) recognizer.destroy();
+        queuedTts = null;
         if (tts != null) { tts.stop(); tts.shutdown(); }
         if (player != null) { player.release(); player = null; }
         if (overlay != null) overlay.remove();
