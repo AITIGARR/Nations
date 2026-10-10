@@ -27,6 +27,7 @@ public class MainActivity extends Activity {
     private TextView overlayHint;
     private ScrollView messagesScroll;
     private boolean receiverAdded;
+    private boolean notificationPrompted;
 
     private final BroadcastReceiver events = new BroadcastReceiver() {
         @Override public void onReceive(Context context, Intent intent) {
@@ -216,12 +217,16 @@ public class MainActivity extends Activity {
     }
 
     private void startWithPermission() {
-        ArrayList<String> pending = new ArrayList<>();
-        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED)
-            pending.add(Manifest.permission.RECORD_AUDIO);
-        if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED)
-            pending.add(Manifest.permission.POST_NOTIFICATIONS);
-        if (!pending.isEmpty()) { requestPermissions(pending.toArray(new String[0]), PERMISSIONS); return; }
+        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[] { Manifest.permission.RECORD_AUDIO }, PERMISSIONS);
+            return;
+        }
+        if (Build.VERSION.SDK_INT >= 33 && !notificationPrompted
+            && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+            notificationPrompted = true;
+            requestPermissions(new String[] { Manifest.permission.POST_NOTIFICATIONS }, PERMISSIONS);
+            return;
+        }
         Intent i = new Intent(this, JarvisService.class).setAction(START);
         startForegroundService(i);
         state.setText("Активирую JARVIS...");
