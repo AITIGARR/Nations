@@ -214,15 +214,15 @@ public class MainActivity extends Activity {
             getSharedPreferences(PREFS, MODE_PRIVATE).edit().putBoolean("cloud_voice", on).apply());
         root.addView(cloudVoice);
 
-        TextView localTitle = text("ЛОКАЛЬНЫЙ OPEN-SOURCE ИИ", 12, CYAN);
+        TextView localTitle = text("АВТОМАТИЧЕСКИЙ ИИ: ОНЛАЙН / ОФЛАЙН", 12, CYAN);
         localTitle.setPadding(0, px(22), 0, px(7));
         root.addView(localTitle);
         TextView localDetail = text(LocalBrain.ready(this)
-            ? "Модель SmolLM2 (135M) подготовлена на телефоне. Она работает без сети, но заметно слабее облачного ИИ, особенно на русском."
-            : "Модель SmolLM2 (135M, Apache 2.0) включена в APK. Для офлайн-режима её нужно один раз распаковать (около 105 МБ).", 12, 0xFF93B3C8);
+            ? "АВТО: доступен интернет и API-ключ → облачный ИИ; нет сети/ошибка API → локальный SmolLM2. Маленькая модель хуже отвечает на русском."
+            : "АВТО: при доступном интернете и API-ключе работает облачный ИИ. Без них локальный SmolLM2 автоматически подготовится из APK (нужно около 105 МБ свободного места).", 12, 0xFF93B3C8);
         root.addView(localDetail);
         Switch offline = new Switch(this);
-        offline.setText("Отвечать через локальный ИИ (без облачного API)");
+        offline.setText("Всегда офлайн — не использовать интернет для ответов");
         offline.setTextSize(12);
         offline.setTextColor(Color.WHITE);
         offline.setChecked(getSharedPreferences(PREFS, MODE_PRIVATE).getBoolean("offline_ai", false));
@@ -238,7 +238,7 @@ public class MainActivity extends Activity {
                 String result;
                 try {
                     LocalBrain.install(this);
-                    result = "Локальная модель готова. Теперь можно включить офлайн-ИИ.";
+                    result = "Локальная модель готова. В автоматическом режиме она используется при отсутствии интернета/API.";
                 } catch(Exception e) {
                     result = "Ошибка подготовки модели: " + e.getClass().getSimpleName();
                 }

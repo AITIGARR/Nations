@@ -194,31 +194,42 @@ public class JarvisService extends Service implements RecognitionListener, Jarvi
         } else if (lower.equals("привет") || lower.contains("ты тут")) {
             speak("Я на связи. Чем могу помочь?", true);
         } else {
-            boolean offline = getSharedPreferences(MainActivity.PREFS, MODE_PRIVATE).getBoolean("offline_ai", false);
-            String key = JarvisBrain.getKey(this);
-            if (key.isEmpty() && !offline) {
-                speak("Добавьте OpenAI API-ключ в настройках JARVIS для полноценного общения с искусственным интеллектом.", true);
-                return;
-            }
-            publish("Обдумываю ответ...", "system");
+            final boolean forcedOffline = getSharedPreferences(MainActivity.PREFS, MODE_PRIVATE)
+                .getBoolean("offline_ai", false);
+            final String key = JarvisBrain.getKey(this);
+            final boolean useCloud = !forcedOffline && NetworkState.hasValidatedInternet(this)
+                && !key.isEmpty();
+            publish(useCloud ? "ИИ через интернет..." : "Локальный ИИ (без сети/API)...", "system");
             network.execute(() -> {
                 String answer;
-                try {
-                    if (offline) {
-                        answer = LocalBrain.answer(this, q);
-                    } else {
+                boolean cloudAnswered = false;
+                if (useCloud) {
+                    try {
                         answer = JarvisBrain.respond(key, conversation, q);
                         conversation.add(JarvisBrain.turn("user", q));
                         conversation.add(JarvisBrain.turn("assistant", answer));
                         while (conversation.size() > 12) { conversation.remove(0); conversation.remove(0); }
+                        cloudAnswered = true;
+                    } catch (Exception e) {
+                        // Even validated Wi-Fi/mobile data cannot guarantee API reachability.
+                        answer = null;
                     }
-                } catch (Exception e) {
-                    String reason = e.getMessage();
-                    answer = "Не удалось связаться с ИИ: " +
-                        (reason == null ? e.getClass().getSimpleName() : reason.substring(0, Math.min(140, reason.length())));
+                } else answer = null;
+                if (!cloudAnswered) {
+                    try {
+                        if (!LocalBrain.ready(this)) LocalBrain.install(this);
+                        answer = LocalBrain.answer(this, q);
+                    } catch (Exception e) {
+                        answer = "Офлайн-ИИ пока недоступен: " + e.getClass().getSimpleName() +
+                            ". При подключённом интернете проверьте OpenAI API-ключ.";
+                    }
                 }
                 String finalAnswer = answer;
-                handler.post(() -> { if (running) speak(finalAnswer, true); });
+                final boolean usedCloud = cloudAnswered;
+                handler.post(() -> { if (running) {
+                    publish(usedCloud ? "Ответ из облачного ИИ" : "Ответ локального ИИ", "system");
+                    speak(finalAnswer, usedCloud);
+                }});
             });
         }
     }
@@ -242,6 +253,8 @@ public class JarvisService extends Service implements RecognitionListener, Jarvi
         speaking = true;
         String key = JarvisBrain.getKey(this);
         boolean cloud = preferCloudVoice && !key.isEmpty()
+            && NetworkState.hasValidatedInternet(this)
+            && !getSharedPreferences(MainActivity.PREFS, MODE_PRIVATE).getBoolean("offline_ai", false)
             && getSharedPreferences(MainActivity.PREFS, MODE_PRIVATE).getBoolean("cloud_voice", true);
         if (!cloud) { speakOnDevice(text); return; }
         network.execute(() -> {

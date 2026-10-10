@@ -1,19 +1,20 @@
-# JARVIS AI v0.4 — Android 14 (local + cloud AI)
+# JARVIS AI v0.4.1 — автоматическое переключение модели
 
-## Local AI
-An actual open-source local inference runtime: llama.cpp pinned to 23b0202a189c44a54625aadcb37a946dd1d6278d (MIT license), with SmolLM2-135M-Instruct Q4_K_M GGUF (Apache 2.0), obtained from bartowski on Hugging Face during GitHub Actions build. Both are openly licensed third-party software. Keep their attribution and terms when redistributing.
+JARVIS использует интернет по умолчанию **при наличии проверенного соединения Wi-Fi или мобильных данных и сохранённого OpenAI API-ключа**. Если интернета нет, ключ отсутствует или запрос OpenAI закончился ошибкой, выполняется локальная модель SmolLM2-135M из APK. При первом использовании локальная модель автоматически извлекается в закрытое хранилище приложения (нужно ~105 MB свободного места). Системные команды телефона по-прежнему не требуют нейросети.
 
-In settings, press "ПОДГОТОВИТЬ ЛОКАЛЬНЫЙ ИИ" (extracts included ~105 MB model into private app storage) then enable "Отвечать через локальный ИИ". Local inference runs via native llama.cpp + JNI, no cloud key needed; local model is very small and mainly English-oriented so Russian fluency and reasoning may be poor. Cloud OpenAI API is still available when offline toggle is off (API key required, billed separately).
+Доступность интернета определяется через Android ConnectivityManager по NET_CAPABILITY_INTERNET и NET_CAPABILITY_VALIDATED, а не только по наличию Wi-Fi. Реальное соединение с OpenAI дополнительно проверяется самим запросом, а при неудаче вызывается офлайн-модель. Если API-ключа нет, Wi-Fi не обеспечивает бесплатный доступ к OpenAI: используется локальный ИИ.
 
-Core phone actions are strict Android intents and AccessibilityService commands and do NOT depend on the LLM. These commands work offline independently of model inference.
+В настройках есть переключатель «Всегда офлайн — не использовать интернет для ответов». Когда он выключен, приложение выбирает модель автоматически. При полностью офлайн-работе голос использует Android TextToSpeech; при облачной работе и включённом переключателе «Голос ИИ» используется OpenAI TTS (платный API).
 
-## Installation
-Install app-debug.apk from the JARVIS Actions artifact; approve microphone and overlay. Use the "Специальные возможности" settings button to explicitly opt into Android screen controls. JARVIS first attempts to open apps directly when overlay permission is granted; if firmware blocks launch, use the visible "ОТКРЫТЬ" button in floating panel, not notifications.
+## Возможности, ограничения и конфиденциальность
+- Оригинальный плавающий интерфейс поверх приложений, голосовое «Джарвис» через Android SpeechRecognizer foreground-service, с активным уведомлением и индикатором микрофона.
+- Запуск приложений через Android Intents, если разрешены наложения; дополнительная кнопка в плавающей панели на прошивках, запрещающих прямой запуск. Управление кнопками и прокруткой через отдельное согласие на Accessibility Service.
+- Ограниченная локальная модель SmolLM2 (Apache 2.0), движок llama.cpp (MIT, pinned), получаются при GitHub Actions сборке; её речь на русском и интеллект существенно слабее облачной модели.
+- Голосовая активация не является надёжным постоянно работающим offline hotword, так как Android SpeechRecognizer имеет ограничения фона и блокировки.
+- Для доступа к API ключ OpenAI нужно ввести на устройстве; API оплачивается отдельно. Он хранится на устройстве через Android Keystore. Вопросы облачному ИИ и тексты облачного синтеза передаются OpenAI.
+- Важные действия, платежи, отправка сообщений и удаление не выполняются автоматически. На некоторых экранах Android блокирует действия.
 
-## Platform limitations
-A regular Android 14 app cannot have unlimited hidden control, continuous guaranteed wake word or unrestricted background launches. Listening requires a foreground microphone service with indicator and explicit initial start by the user. Stop it from UI/notification. System recognition may be interrupted by Android. Local inference is CPU-intensive and can be slow; model extracts to about 105 MB of private storage, in addition to the APK.
+## Сборка
+GitHub Actions на ветке jarvis-android14 устанавливает JDK 17, Android SDK 35, NDK, CMake, скачивает pinned llama.cpp (MIT) и GGUF SmolLM2-135M (Apache 2.0), затем собирает arm64 APK и выкладывает artifact JARVIS-Android14-debug-apk. Для локальной сборки понадобятся эти же зависимости, модель в assets и подпроект llama.cpp в cpp.
 
-## Build
-GitHub workflow fetches pinned source and model, installs Android NDK r27c and CMake 3.22.1, then Gradle builds arm64-v8a APK. The project needs these assets if built locally. Model credits: https://huggingface.co/bartowski/SmolLM2-135M-Instruct-GGUF and https://github.com/ggml-org/llama.cpp.
-
-Do not commit API keys. Cloud speech and cloud responses may incur OpenAI API charges.
+Исходники моделей и лицензии: https://github.com/ggml-org/llama.cpp , https://huggingface.co/bartowski/SmolLM2-135M-Instruct-GGUF
