@@ -259,6 +259,29 @@ public class JarvisService extends Service implements RecognitionListener, Jarvi
         if (!running) return;
         publish(text, "assistant");
         speaking = true;
+
+        boolean hasNetwork = NetworkState.hasValidatedInternet(this);
+        boolean forcedOffline = getSharedPreferences(MainActivity.PREFS, MODE_PRIVATE)
+            .getBoolean("offline_ai", false);
+        boolean fish = FishVoice.isEnabled(this) && !FishVoice.getKey(this).isEmpty()
+            && hasNetwork && !forcedOffline && !"Слушаю.".equals(text);
+
+        if (fish) {
+            network.execute(() -> {
+                File voice = null;
+                try { voice = FishVoice.synthesize(this, text); }
+                catch (Exception ignored) { /* transparently fall back to existing speech engines */ }
+                final File generated = voice;
+                handler.post(() -> {
+                    if (!running) return;
+                    if (generated != null) playAudio(generated, text);
+                    else speakStandard(text, preferCloudVoice);
+                });
+            });
+        } else speakStandard(text, preferCloudVoice);
+    }
+
+    private void speakStandard(String text, boolean preferCloudVoice) {
         String key = JarvisBrain.getKey(this);
         boolean cloud = preferCloudVoice && !key.isEmpty()
             && NetworkState.hasValidatedInternet(this)
@@ -269,7 +292,7 @@ public class JarvisService extends Service implements RecognitionListener, Jarvi
             File file;
             try { file = JarvisBrain.createSpeech(this, key, text); }
             catch (Exception e) { file = null; }
-            File finalFile = file;
+            final File finalFile = file;
             handler.post(() -> {
                 if (!running) return;
                 if (finalFile != null) playAudio(finalFile, text);

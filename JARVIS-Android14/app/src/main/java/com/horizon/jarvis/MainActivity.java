@@ -88,7 +88,7 @@ public class MainActivity extends Activity {
         headline.setGravity(Gravity.CENTER);
         root.addView(headline);
 
-        TextView subtitle = text("PERSONAL ARTIFICIAL INTELLIGENCE  //  05", 10, 0xFF7EAEC7);
+        TextView subtitle = text("PERSONAL ARTIFICIAL INTELLIGENCE  //  06", 10, 0xFF7EAEC7);
         subtitle.setGravity(Gravity.CENTER);
         subtitle.setLetterSpacing(.1f);
         root.addView(subtitle);
@@ -243,6 +243,115 @@ public class MainActivity extends Activity {
         cloudVoice.setOnCheckedChangeListener((b, on) ->
             getSharedPreferences(PREFS, MODE_PRIVATE).edit().putBoolean("cloud_voice", on).apply());
         root.addView(cloudVoice);
+
+        TextView fishTitle = text("ГОЛОС FISH AUDIO — JARVIS", 12, CYAN);
+        fishTitle.setPadding(0, px(22), 0, px(7));
+        root.addView(fishTitle);
+        TextView fishInfo = text("Fish Audio озвучивает ответы живым, выразительным голосом. " +
+            "В списке голосов есть «Jarvis | Iron Man». Доступ и права на использование голоса регулируются Fish Audio. " +
+            "Нужен интернет и отдельный Fish API-ключ.", 12, 0xFF93B3C8);
+        root.addView(fishInfo);
+        Button fishWeb = action("♫   ПРОСЛУШАТЬ ГОЛОС НА FISH AUDIO");
+        root.addView(fishWeb);
+        fishWeb.setOnClickListener(v -> startActivity(new Intent(Intent.ACTION_VIEW,
+            android.net.Uri.parse(FishVoice.SOURCE_VOICE_URL))));
+
+        EditText fishKeyInput = new EditText(this);
+        fishKeyInput.setSingleLine(true);
+        fishKeyInput.setTextSize(14);
+        fishKeyInput.setTextColor(Color.WHITE);
+        fishKeyInput.setHintTextColor(0xFF82A3B5);
+        fishKeyInput.setHint(FishVoice.getKey(this).isEmpty()
+            ? "Fish Audio API key" : "Ключ Fish сохранён — введите новый для замены");
+        fishKeyInput.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
+        root.addView(fishKeyInput);
+
+        EditText fishVoiceId = new EditText(this);
+        fishVoiceId.setTextColor(Color.WHITE);
+        fishVoiceId.setSingleLine(true);
+        fishVoiceId.setTextSize(12);
+        fishVoiceId.setHintTextColor(0xFF82A3B5);
+        fishVoiceId.setHint("Fish Audio reference_id");
+        fishVoiceId.setText(FishVoice.voiceId(this));
+        root.addView(fishVoiceId);
+
+        Button fishSave = action("СОХРАНИТЬ НАСТРОЙКИ FISH AUDIO");
+        root.addView(fishSave);
+        fishSave.setOnClickListener(v -> {
+            try {
+                String id = fishVoiceId.getText().toString().trim();
+                FishVoice.saveVoiceId(this, id);
+                String value = fishKeyInput.getText().toString().trim();
+                if (!value.isEmpty()) FishVoice.saveKey(this, value);
+                fishKeyInput.setText("");
+                fishKeyInput.setHint("Ключ Fish сохранён — введите новый для замены");
+                state.setText("Настройки Fish Audio сохранены в защищённом хранилище телефона.");
+            } catch (Exception e) {
+                state.setText("Ошибка Fish Audio: проверьте 32-символьный ID и API-ключ.");
+            }
+        });
+
+        Switch fishEnabled = new Switch(this);
+        fishEnabled.setText("Озвучивать ответы через Fish Audio");
+        fishEnabled.setTextColor(Color.WHITE);
+        fishEnabled.setTextSize(12);
+        fishEnabled.setChecked(FishVoice.isEnabled(this));
+        fishEnabled.setOnCheckedChangeListener((button, enabled) -> {
+            FishVoice.setEnabled(this, enabled);
+            if (enabled && FishVoice.getKey(this).isEmpty())
+                state.setText("Чтобы Fish Audio заработал, сохраните отдельный Fish API-ключ.");
+        });
+        root.addView(fishEnabled);
+
+        Button fishPreview = action("▶   ПРОВЕРИТЬ ГОЛОС FISH AUDIO");
+        root.addView(fishPreview);
+        fishPreview.setOnClickListener(v -> {
+            if (FishVoice.getKey(this).isEmpty()) {
+                state.setText("Сначала введите и сохраните Fish Audio API-ключ.");
+                return;
+            }
+            if (!NetworkState.hasValidatedInternet(this)) {
+                state.setText("Для синтеза Fish Audio нужен интернет.");
+                return;
+            }
+            fishPreview.setEnabled(false);
+            state.setText("Fish Audio синтезирует тестовую фразу...");
+            new Thread(() -> {
+                java.io.File audio = null;
+                String error = null;
+                try {
+                    audio = FishVoice.synthesize(this,
+                        "Добрый вечер. Джарвис на связи. Чем могу помочь?");
+                } catch (Exception e) {
+                    error = e.getMessage();
+                }
+                final java.io.File result = audio;
+                final String err = error;
+                runOnUiThread(() -> {
+                    fishPreview.setEnabled(true);
+                    if (isFinishing()) return;
+                    if (result == null) {
+                        state.setText("Fish Audio не ответил: " + (err == null ? "неизвестная ошибка" : err));
+                        return;
+                    }
+                    try {
+                        android.media.MediaPlayer testPlayer = new android.media.MediaPlayer();
+                        testPlayer.setDataSource(result.getAbsolutePath());
+                        testPlayer.setOnCompletionListener(p -> p.release());
+                        testPlayer.setOnErrorListener((p, what, extra) -> {
+                            p.release();
+                            state.setText("Ошибка воспроизведения Fish Audio.");
+                            return true;
+                        });
+                        testPlayer.prepare();
+                        testPlayer.start();
+                        state.setText("Воспроизвожу пример голоса Fish Audio.");
+                    } catch (Exception e) {
+                        state.setText("Не удалось воспроизвести звук.");
+                    }
+                });
+            }, "jarvis-fish-preview").start();
+        });
 
         TextView localTitle = text("АВТОМАТИЧЕСКИЙ ИИ: ОНЛАЙН / ОФЛАЙН", 12, CYAN);
         localTitle.setPadding(0, px(22), 0, px(7));
