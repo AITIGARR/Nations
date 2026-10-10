@@ -22,13 +22,28 @@ jobs:
         run: |
           echo "ANDROID_HOME=${ANDROID_HOME:-/usr/local/lib/android/sdk}" >> "$GITHUB_ENV"
           yes | "${ANDROID_HOME:-/usr/local/lib/android/sdk}/cmdline-tools/latest/bin/sdkmanager" --licenses || true
-          "${ANDROID_HOME:-/usr/local/lib/android/sdk}/cmdline-tools/latest/bin/sdkmanager" 'platforms;android-35' 'build-tools;35.0.0'
+          "${ANDROID_HOME:-/usr/local/lib/android/sdk}/cmdline-tools/latest/bin/sdkmanager" 'platforms;android-35' 'build-tools;35.0.0' 'ndk;27.2.12479018' 'cmake;3.22.1'
+      - name: Prepare pinned llama.cpp runtime
+        run: |
+          DIR=JARVIS-Android14/app/src/main/cpp/llama.cpp
+          mkdir -p "$DIR"
+          git -C "$DIR" init
+          git -C "$DIR" remote add origin https://github.com/ggml-org/llama.cpp.git
+          git -C "$DIR" fetch --depth 1 origin 23b0202a189c44a54625aadcb37a946dd1d6278d
+          git -C "$DIR" checkout --detach FETCH_HEAD
+      - name: Download licensed 135M offline GGUF model
+        run: |
+          mkdir -p JARVIS-Android14/app/src/main/assets
+          curl --fail --location --retry 3 --connect-timeout 20 --max-time 240 \
+            'https://huggingface.co/bartowski/SmolLM2-135M-Instruct-GGUF/resolve/main/SmolLM2-135M-Instruct-Q4_K_M.gguf?download=true' \
+            -o JARVIS-Android14/app/src/main/assets/SmolLM2-135M-Instruct-Q4_K_M.gguf
+          test "$(stat -c%s JARVIS-Android14/app/src/main/assets/SmolLM2-135M-Instruct-Q4_K_M.gguf)" -gt 95000000
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
       - name: Build debug APK
         working-directory: JARVIS-Android14
-        run: gradle --no-daemon assembleDebug
+        run: gradle --no-daemon --max-workers=2 assembleDebug
       - uses: actions/upload-artifact@v4
         with:
           name: JARVIS-Android14-debug-apk

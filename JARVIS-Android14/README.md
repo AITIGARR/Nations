@@ -1,37 +1,19 @@
-# JARVIS AI 0.3 — Android 14
+# JARVIS AI v0.4 — Android 14 (local + cloud AI)
 
-Экспериментальная версия неофициального Android-помощника с плавающим окном, голосом, облачным ИИ и локальным управлением телефоном.
+## Local AI
+An actual open-source local inference runtime: llama.cpp pinned to 23b0202a189c44a54625aadcb37a946dd1d6278d (MIT license), with SmolLM2-135M-Instruct Q4_K_M GGUF (Apache 2.0), obtained from bartowski on Hugging Face during GitHub Actions build. Both are openly licensed third-party software. Keep their attribution and terms when redistributing.
 
-## Изменения v0.3
-- Убрано сообщение «нажмите на уведомление», когда уведомление может быть скрыто или отключено.
-- Прямой запуск приложений по голосовой команде (при разрешённом показе поверх других приложений): «Джарвис, открой Telegram/YouTube/Minecraft/Chrome/WhatsApp/Discord/Spotify/ВКонтакте/Карты/Gmail/Камеру/Настройки». Другие установленные приложения ищутся по отображаемому имени.
-- Если OEM Android ограничит фоновый запуск, в **плавающей панели JARVIS** появляется видимая кнопка «ОТКРЫТЬ», без необходимости искать системное уведомление. Если разрешение на показ поверх окон отсутствует, сервис объяснит, где его включить.
-- Дополнительная функция **Специальные возможности → JARVIS** (по явному согласию пользователя): «Домой», «Назад», «Недавние приложения», «Открой уведомления», «Быстрые настройки», «Прокрути вниз/вверх», «Нажми на [текст кнопки]».
-- Голос ответов в облачном режиме теперь используется не только для вопросов к ИИ, но и для локальных команд; для этого нужен платный ключ OpenAI API и включённый «Голос ИИ». Если API недоступен, используется русский Android TTS.
-- Главное окно получило ссылки на разрешения «Специальные возможности» и «Уведомления».
-- Нет автоматической отправки сообщений, подтверждения платежей и системных опасных действий.
+In settings, press "ПОДГОТОВИТЬ ЛОКАЛЬНЫЙ ИИ" (extracts included ~105 MB model into private app storage) then enable "Отвечать через локальный ИИ". Local inference runs via native llama.cpp + JNI, no cloud key needed; local model is very small and mainly English-oriented so Russian fluency and reasoning may be poor. Cloud OpenAI API is still available when offline toggle is off (API key required, billed separately).
 
-## Установка
-1. Откройте вкладку **Actions** ветки jarvis-android14 и скачайте артефакт успешной сборки JARVIS-Android14-debug-apk. В ZIP лежит app-debug.apk.
-2. Установите APK на Android 14 (может потребоваться удалить прошлую debug-сборку при смене тестовой подписи; перед удалением сохрани свой API-ключ отдельно, так как локальные данные удалятся).
-3. Запустите JARVIS, выберите **Разрешить плавающее окно**, включите переключатель в системном меню.
-4. Разрешите доступ к микрофону. Включите уведомления по желанию (они больше не нужны для открытия приложений, но помогают видеть состояние сервиса).
-5. Для управления экраном нажмите **Открыть специальные возможности**, найдите JARVIS и включите сервис, если доверяете ему. На некоторых устройствах Android потребуется вручную разрешить «Ограниченные настройки» в карточке приложения; система может не показывать этот пункт.
-6. Нажмите **Запустить голосовой режим** в главном окне и сверните его. Должен появиться перетаскиваемый круг поверх других приложений.
-7. Скажите «Джарвис, открой Ютуб», «Джарвис, домой», «Джарвис, прокрути вниз».
-8. Для умных ответов и единого AI-голоса сохраните собственный OpenAI API key в настройках JARVIS. Разговоры отправляются в облако, API тарифицируется отдельно.
+Core phone actions are strict Android intents and AccessibilityService commands and do NOT depend on the LLM. These commands work offline independently of model inference.
 
-## Ограничения
-Это **не системное приложение и не полный контроль над Android**. Доступ к защищённым окнам, финансовым подтверждениям, скрытым настройкам и данным других приложений ограничен системой. Даже с разрешением на наложение фоновые запуски могут блокироваться конкретной прошивкой. Часть приложений не отдаёт кнопки для AccessibilityService; команда «нажми» тогда вернёт ошибку, а не притворится успешной.
+## Installation
+Install app-debug.apk from the JARVIS Actions artifact; approve microphone and overlay. Use the "Специальные возможности" settings button to explicitly opt into Android screen controls. JARVIS first attempts to open apps directly when overlay permission is granted; if firmware blocks launch, use the visible "ОТКРЫТЬ" button in floating panel, not notifications.
 
-Прослушивание фразы «Джарвис» выполняется повторными сеансами Android SpeechRecognizer с foreground-сервисом, не постоянным офлайн wake-word движком. Android может приостанавливать распознавание в фоне/при блокировке, и для старта сеанса сначала требуется открыть приложение. Это не полноценное always-on распознавание.
+## Platform limitations
+A regular Android 14 app cannot have unlimited hidden control, continuous guaranteed wake word or unrestricted background launches. Listening requires a foreground microphone service with indicator and explicit initial start by the user. Stop it from UI/notification. System recognition may be interrupted by Android. Local inference is CPU-intensive and can be slow; model extracts to about 105 MB of private storage, in addition to the APK.
 
-Для прозрачности Android отображает активный микрофон через системный индикатор и сервисное уведомление (если уведомления разрешены). В любой момент можно нажать «Остановить» в JARVIS.
+## Build
+GitHub workflow fetches pinned source and model, installs Android NDK r27c and CMake 3.22.1, then Gradle builds arm64-v8a APK. The project needs these assets if built locally. Model credits: https://huggingface.co/bartowski/SmolLM2-135M-Instruct-GGUF and https://github.com/ggml-org/llama.cpp.
 
-AccessibilityService используется только для команд, вызванных пользователем, и не записывает события, скриншоты или содержимое чужих приложений. Не давайте этому разрешению недоверенным APK.
-
-## Локальная сборка
-JDK 17, Android SDK 35, Gradle 8.9:
-    cd JARVIS-Android14
-    gradle --no-daemon assembleDebug
-GitHub Actions автоматически собирает debug APK при изменениях в ветке jarvis-android14.
+Do not commit API keys. Cloud speech and cloud responses may incur OpenAI API charges.

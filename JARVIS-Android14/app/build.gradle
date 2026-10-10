@@ -8,8 +8,19 @@ android {
         applicationId 'com.horizon.jarvis'
         minSdk 26
         targetSdk 34
-        versionCode 3
-        versionName '0.3.0'
+        ndk { abiFilters 'arm64-v8a' }
+        versionCode 4
+        versionName '0.4.0'
+    }
+    ndkVersion '27.2.12479018'
+    externalNativeBuild {
+        cmake {
+            path file('src/main/cpp/CMakeLists.txt')
+            version '3.22.1'
+        }
+    }
+    androidResources {
+        noCompress += ['gguf']
     }
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17

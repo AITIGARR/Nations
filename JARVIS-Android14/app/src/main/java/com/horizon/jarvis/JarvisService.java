@@ -194,8 +194,9 @@ public class JarvisService extends Service implements RecognitionListener, Jarvi
         } else if (lower.equals("привет") || lower.contains("ты тут")) {
             speak("Я на связи. Чем могу помочь?", true);
         } else {
+            boolean offline = getSharedPreferences(MainActivity.PREFS, MODE_PRIVATE).getBoolean("offline_ai", false);
             String key = JarvisBrain.getKey(this);
-            if (key.isEmpty()) {
+            if (key.isEmpty() && !offline) {
                 speak("Добавьте OpenAI API-ключ в настройках JARVIS для полноценного общения с искусственным интеллектом.", true);
                 return;
             }
@@ -203,10 +204,14 @@ public class JarvisService extends Service implements RecognitionListener, Jarvi
             network.execute(() -> {
                 String answer;
                 try {
-                    answer = JarvisBrain.respond(key, conversation, q);
-                    conversation.add(JarvisBrain.turn("user", q));
-                    conversation.add(JarvisBrain.turn("assistant", answer));
-                    while (conversation.size() > 12) { conversation.remove(0); conversation.remove(0); }
+                    if (offline) {
+                        answer = LocalBrain.answer(this, q);
+                    } else {
+                        answer = JarvisBrain.respond(key, conversation, q);
+                        conversation.add(JarvisBrain.turn("user", q));
+                        conversation.add(JarvisBrain.turn("assistant", answer));
+                        while (conversation.size() > 12) { conversation.remove(0); conversation.remove(0); }
+                    }
                 } catch (Exception e) {
                     String reason = e.getMessage();
                     answer = "Не удалось связаться с ИИ: " +

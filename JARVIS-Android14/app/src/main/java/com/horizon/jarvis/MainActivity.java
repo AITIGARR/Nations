@@ -214,6 +214,43 @@ public class MainActivity extends Activity {
             getSharedPreferences(PREFS, MODE_PRIVATE).edit().putBoolean("cloud_voice", on).apply());
         root.addView(cloudVoice);
 
+        TextView localTitle = text("ЛОКАЛЬНЫЙ OPEN-SOURCE ИИ", 12, CYAN);
+        localTitle.setPadding(0, px(22), 0, px(7));
+        root.addView(localTitle);
+        TextView localDetail = text(LocalBrain.ready(this)
+            ? "Модель SmolLM2 (135M) подготовлена на телефоне. Она работает без сети, но заметно слабее облачного ИИ, особенно на русском."
+            : "Модель SmolLM2 (135M, Apache 2.0) включена в APK. Для офлайн-режима её нужно один раз распаковать (около 105 МБ).", 12, 0xFF93B3C8);
+        root.addView(localDetail);
+        Switch offline = new Switch(this);
+        offline.setText("Отвечать через локальный ИИ (без облачного API)");
+        offline.setTextSize(12);
+        offline.setTextColor(Color.WHITE);
+        offline.setChecked(getSharedPreferences(PREFS, MODE_PRIVATE).getBoolean("offline_ai", false));
+        offline.setOnCheckedChangeListener((b,on) ->
+            getSharedPreferences(PREFS, MODE_PRIVATE).edit().putBoolean("offline_ai", on).apply());
+        root.addView(offline);
+        Button installModel = action("◈   ПОДГОТОВИТЬ ЛОКАЛЬНЫЙ ИИ");
+        root.addView(installModel);
+        installModel.setOnClickListener(v -> {
+            installModel.setEnabled(false);
+            state.setText("Подготавливаю модель в памяти телефона...");
+            new Thread(() -> {
+                String result;
+                try {
+                    LocalBrain.install(this);
+                    result = "Локальная модель готова. Теперь можно включить офлайн-ИИ.";
+                } catch(Exception e) {
+                    result = "Ошибка подготовки модели: " + e.getClass().getSimpleName();
+                }
+                final String message = result;
+                runOnUiThread(() -> {
+                    installModel.setEnabled(true);
+                    state.setText(message);
+                    localDetail.setText(message);
+                });
+            }, "jarvis-local-setup").start();
+        });
+
         TextView info = text("Голос синтезирован ИИ и не принадлежит актёру. Прослушивание работает только после запуска видимого сервиса с уведомлением. Android может приостанавливать распознавание в фоне.", 11, 0xFFA6B9CA);
         info.setPadding(0, px(18), 0, px(15));
         root.addView(info);
