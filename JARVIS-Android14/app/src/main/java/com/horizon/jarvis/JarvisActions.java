@@ -16,6 +16,31 @@ final class JarvisActions {
     static String handle(JarvisService service, JarvisOverlay overlay, String spoken) {
         String q = normalize(spoken);
         String action = null;
+        // Explicit, user-directed text entry into the CURRENT focused editable field.
+        // Accessibility refuses passwords and never automatically presses Send/Enter.
+        for (String prefix : new String[] {"введи текст ", "напечатай ", "напиши в поле ", "вставь текст ", "введи "}) {
+            if (q.startsWith(prefix)) {
+                String original = spoken.trim();
+                String value = original.substring(prefix.length()).trim();
+                if (value.isEmpty()) return "Скажите, какой текст нужно ввести.";
+                if (!JarvisAccessibilityService.isConnected()) return "Для ввода текста включите JARVIS в специальных возможностях Android.";
+                return JarvisAccessibilityService.execute("type_text", value)
+                    ? "Текст введён в выбранное поле. Отправлять его нужно отдельно."
+                    : "Не удалось ввести текст: сначала нажмите на нужное поле. Поля паролей недоступны.";
+            }
+        }
+        if (q.equals("покажи клавиатуру") || q.equals("открой клавиатуру")
+            || q.equals("вызови клавиатуру")) action = "show_keyboard";
+        else if (q.equals("скрой клавиатуру") || q.equals("закрой клавиатуру")) action = "hide_keyboard";
+        else if (q.equals("очисти поле") || q.equals("очисти текст") || q.equals("сотри текст в поле")) action = "clear_text";
+        else if (q.equals("удали последний символ") || q.equals("сотри последнюю букву")) action = "backspace";
+        else if (q.equals("прочитай экран") || q.equals("что на экране")
+            || q.equals("прочитай что на экране") || q.equals("что написано на экране")) {
+            if (!JarvisAccessibilityService.isConnected())
+                return "Чтобы прочитать текущий экран, включите JARVIS в специальных возможностях.";
+            return JarvisAccessibilityService.describeScreen();
+        }
+
         if (q.equals("назад") || q.contains("вернись назад") || q.contains("шаг назад")) action = "back";
         else if (q.equals("домой") || q.contains("на главный экран") || q.contains("на рабочий стол")) action = "home";
         else if (q.contains("последние приложения") || q.contains("недавние приложения")) action = "recents";
@@ -59,6 +84,10 @@ final class JarvisActions {
             case "quick_settings": return "быстрые настройки";
             case "scroll_down": return "прокрутка вниз";
             case "scroll_up": return "прокрутка вверх";
+            case "show_keyboard": return "открытие клавиатуры";
+            case "hide_keyboard": return "скрытие клавиатуры";
+            case "clear_text": return "очистка выбранного поля";
+            case "backspace": return "последний символ удалён";
             default: return "команда";
         }
     }

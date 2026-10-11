@@ -22,7 +22,9 @@ public class MainActivity extends Activity {
     static final String QUERY = "com.horizon.jarvis.QUERY";
     private static final int PERMISSIONS = 400;
     private static final int CYAN = Color.rgb(0, 222, 255);
-    private static final int DARK = Color.rgb(5, 15, 28);
+    private static final int DARK = Color.rgb(3, 11, 23);
+    private static final int PANEL = Color.rgb(9, 27, 44);
+    private static final int LINE = Color.rgb(25, 91, 120);
     private LinearLayout transcript;
     private TextView state;
     private TextView overlayHint;
@@ -64,10 +66,24 @@ public class MainActivity extends Activity {
         b.setTextColor(Color.WHITE);
         b.setTextSize(12);
         b.setAllCaps(false);
-        b.setBackground(bg(Color.rgb(9, 48, 69), CYAN, px(12)));
+        GradientDrawable gradient = new GradientDrawable(
+            GradientDrawable.Orientation.LEFT_RIGHT, new int[]{0xFF06374F, 0xFF0C263E});
+        gradient.setCornerRadius(px(13));
+        gradient.setStroke(px(1), 0xFF126C8B);
+        b.setBackground(gradient);
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, px(49));
         lp.topMargin = px(9);
         b.setLayoutParams(lp);
+        return b;
+    }
+
+    private Button smallAction(String label) {
+        Button b = new Button(this);
+        b.setAllCaps(false);
+        b.setText(label);
+        b.setTextSize(11);
+        b.setTextColor(Color.WHITE);
+        b.setBackground(bg(PANEL, LINE, px(12)));
         return b;
     }
 
@@ -77,33 +93,59 @@ public class MainActivity extends Activity {
         getWindow().setNavigationBarColor(DARK);
         ScrollView rootScroll = new ScrollView(this);
         rootScroll.setFillViewport(true);
-        rootScroll.setBackgroundColor(DARK);
+        GradientDrawable backdrop = new GradientDrawable(
+            GradientDrawable.Orientation.TOP_BOTTOM, new int[]{0xFF061E30, DARK, 0xFF020713});
+        rootScroll.setBackground(backdrop);
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setPadding(px(20), px(18), px(20), px(20));
+        root.setPadding(px(20), px(23), px(20), px(32));
         rootScroll.addView(root);
         setContentView(rootScroll);
 
-        TextView headline = text("J.A.R.V.I.S.", 32, CYAN);
+        TextView headline = text("J A R V I S", 35, CYAN);
         headline.setTypeface(Typeface.create("sans-serif-light", Typeface.BOLD));
         headline.setGravity(Gravity.CENTER);
         root.addView(headline);
 
-        TextView subtitle = text("PERSONAL ARTIFICIAL INTELLIGENCE  //  07", 10, 0xFF7EAEC7);
+        TextView subtitle = text("PERSONAL ASSISTANT  •  ANDROID 14  •  v0.8", 10, 0xFF7EAEC7);
         subtitle.setGravity(Gravity.CENTER);
         subtitle.setLetterSpacing(.1f);
         root.addView(subtitle);
 
         Orb orb = new Orb(this);
-        LinearLayout.LayoutParams orbParams = new LinearLayout.LayoutParams(-1, px(248));
+        LinearLayout.LayoutParams orbParams = new LinearLayout.LayoutParams(-1, px(202));
         orbParams.topMargin = px(9);
         root.addView(orb, orbParams);
 
-        this.state = text("Система ожидает запуска", 16, Color.WHITE);
-        this.state.setGravity(Gravity.CENTER);
-        root.addView(this.state);
+        LinearLayout statusCard = new LinearLayout(this);
+        statusCard.setOrientation(LinearLayout.VERTICAL);
+        statusCard.setPadding(px(15), px(13), px(15), px(13));
+        statusCard.setBackground(bg(PANEL, LINE, px(16)));
+        TextView statusLabel = text("●   SYSTEM STATUS", 10, CYAN);
+        statusLabel.setLetterSpacing(.12f);
+        statusCard.addView(statusLabel);
+        this.state = text("Готов к запуску", 16, Color.WHITE);
+        this.state.setPadding(0, px(8), 0, 0);
+        statusCard.addView(this.state);
+        LinearLayout.LayoutParams cardParams = new LinearLayout.LayoutParams(-1, -2);
+        cardParams.bottomMargin = px(9);
+        root.addView(statusCard, cardParams);
 
-        TextView caption = text("АКТИВАЦИЯ: «ДЖАРВИС»   •   ANDROID 14", 11, 0xFF84B3C9);
+        LinearLayout indicators = new LinearLayout(this);
+        indicators.setGravity(Gravity.CENTER_VERTICAL);
+        TextView netLabel = text(NetworkState.hasValidatedInternet(this) ? "●  ONLINE" : "○  OFFLINE", 11,
+            NetworkState.hasValidatedInternet(this) ? 0xFF68F0C8 : 0xFFBAC9D8);
+        netLabel.setPadding(px(10), px(7), 0, px(7));
+        indicators.addView(netLabel, new LinearLayout.LayoutParams(0, -2, 1));
+        TextView accessLabel = text(JarvisAccessibilityService.isConnected()
+            ? "●  CONTROL READY" : "○  CONTROL OFF", 11,
+            JarvisAccessibilityService.isConnected() ? 0xFF68F0C8 : 0xFFBAC9D8);
+        accessLabel.setGravity(Gravity.END);
+        accessLabel.setPadding(0, px(7), px(10), px(7));
+        indicators.addView(accessLabel, new LinearLayout.LayoutParams(0, -2, 1));
+        root.addView(indicators);
+
+        TextView caption = text("СКАЖИ «ДЖАРВИС» И ЗАДАЙ ВОПРОС", 11, 0xFF84B3C9);
         caption.setGravity(Gravity.CENTER);
         caption.setPadding(0, px(10), 0, px(6));
         root.addView(caption);
@@ -166,16 +208,59 @@ public class MainActivity extends Activity {
             startActivity(i);
         });
 
+        TextView fastTitle = text("БЫСТРЫЙ ДОСТУП", 12, CYAN);
+        fastTitle.setPadding(0, px(18), 0, px(8));
+        root.addView(fastTitle);
+        LinearLayout quickRow = new LinearLayout(this);
+        quickRow.setOrientation(LinearLayout.HORIZONTAL);
+        Button timeShortcut = smallAction("◷  Время");
+        LinearLayout.LayoutParams cellOne = new LinearLayout.LayoutParams(0, px(46), 1);
+        cellOne.rightMargin=px(6);
+        quickRow.addView(timeShortcut, cellOne);
+        timeShortcut.setOnClickListener(v -> {
+            String answer = JarvisPersona.withSir(BasicCommands.answer(
+                BasicCommands.Kind.TIME, new Date(), -1));
+            state.setText(answer);
+            addLine("assistant", answer);
+        });
+        Button mathShortcut = smallAction("∑  Пример");
+        LinearLayout.LayoutParams cellTwo = new LinearLayout.LayoutParams(0, px(46), 1);
+        cellTwo.rightMargin=px(6);
+        quickRow.addView(mathShortcut, cellTwo);
+        mathShortcut.setOnClickListener(v -> {
+            String answer = FastMath.calculate("25 умножить на 8");
+            if (answer != null) {
+                answer = JarvisPersona.withSir("25 × 8 = " + answer.replace("Получается ", ""));
+                state.setText(answer);
+                addLine("assistant", answer);
+            }
+        });
+        Button helpShortcut = smallAction("⌘  Команды");
+        quickRow.addView(helpShortcut, new LinearLayout.LayoutParams(0, px(46), 1));
+        helpShortcut.setOnClickListener(v -> new android.app.AlertDialog.Builder(this)
+            .setTitle("Что я умею, сэр")
+            .setMessage("«Джарвис, сколько будет 250 умножить на 4»\n" +
+                "«Джарвис, открой Telegram»\n" +
+                "«Джарвис, введи текст привет»\n" +
+                "«Джарвис, очисти поле»\n" +
+                "«Джарвис, открой клавиатуру»\n" +
+                "«Джарвис, прочитай экран»\n" +
+                "«Джарвис, прокрути вниз»\n" +
+                "«Джарвис, назад»\n\n" +
+                "Управление чужими приложениями требует отдельного разрешения «Специальные возможности».")
+            .setPositiveButton("Понятно", null).show());
+        root.addView(quickRow);
+
         TextView askTitle = text("ДИАЛОГ С JARVIS", 12, CYAN);
         askTitle.setPadding(0, px(22), 0, px(8));
         root.addView(askTitle);
         messagesScroll = new ScrollView(this);
-        messagesScroll.setBackground(bg(0xFF071C2C, 0xFF15577B, px(14)));
+        messagesScroll.setBackground(bg(0xFF091E32, LINE, px(16)));
         transcript = new LinearLayout(this);
         transcript.setOrientation(LinearLayout.VERTICAL);
         transcript.setPadding(px(13), px(13), px(13), px(13));
         messagesScroll.addView(transcript);
-        root.addView(messagesScroll, new LinearLayout.LayoutParams(-1, px(176)));
+        root.addView(messagesScroll, new LinearLayout.LayoutParams(-1, px(220)));
         addLine("assistant", "Система готова. Произнесите «Джарвис» после запуска прослушивания.");
 
         EditText input = new EditText(this);
@@ -184,7 +269,7 @@ public class MainActivity extends Activity {
         input.setTextSize(14);
         input.setTextColor(Color.WHITE);
         input.setHintTextColor(0xFF82A3B5);
-        input.setHint("Написать Джарвису...");
+        input.setHint("Спроси меня или дай команду...");
         root.addView(input);
         Button send = action("➤   ОТПРАВИТЬ");
         root.addView(send);
@@ -192,13 +277,20 @@ public class MainActivity extends Activity {
             String q = input.getText().toString().trim();
             if (q.isEmpty()) return;
             if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+                String resultMath = FastMath.calculate(q);
                 BasicCommands.Kind basic = BasicCommands.classify(q);
-                if (basic != BasicCommands.Kind.NONE) {
+                if (resultMath != null) {
+                    String response = JarvisPersona.withSir(resultMath);
+                    addLine("user", q);
+                    addLine("assistant", response);
+                    state.setText(response);
+                    input.setText("");
+                } else if (basic != BasicCommands.Kind.NONE) {
                     android.os.BatteryManager battery = getSystemService(android.os.BatteryManager.class);
                     int percentage = battery == null ? -1 :
                         battery.getIntProperty(android.os.BatteryManager.BATTERY_PROPERTY_CAPACITY);
                     addLine("user", q);
-                    String response = BasicCommands.answer(basic, new Date(), percentage);
+                    String response = JarvisPersona.withSir(BasicCommands.answer(basic, new Date(), percentage));
                     addLine("assistant", response);
                     state.setText(response);
                     input.setText("");
@@ -212,9 +304,22 @@ public class MainActivity extends Activity {
             input.setText("");
         });
 
+        Button settingsToggle = action("⚙   НАСТРОЙКИ МОДЕЛЕЙ, ГОЛОСА И API");
+        root.addView(settingsToggle);
+        LinearLayout advanced = new LinearLayout(this);
+        advanced.setOrientation(LinearLayout.VERTICAL);
+        advanced.setPadding(px(12), px(10), px(12), px(13));
+        advanced.setBackground(bg(PANEL, LINE, px(16)));
+        advanced.setVisibility(View.GONE);
+        root.addView(advanced);
+        settingsToggle.setOnClickListener(v -> {
+            boolean show = advanced.getVisibility() != View.VISIBLE;
+            advanced.setVisibility(show ? View.VISIBLE : View.GONE);
+            settingsToggle.setText(show ? "⌃   СВЕРНУТЬ НАСТРОЙКИ" : "⚙   НАСТРОЙКИ МОДЕЛЕЙ, ГОЛОСА И API");
+        });
         TextView settingsTitle = text("НАСТРОЙКИ ИИ", 12, CYAN);
         settingsTitle.setPadding(0, px(22), 0, px(8));
-        root.addView(settingsTitle);
+        advanced.addView(settingsTitle);
         EditText apiKey = new EditText(this);
         apiKey.setTextSize(14);
         apiKey.setTextColor(Color.WHITE);
@@ -222,9 +327,9 @@ public class MainActivity extends Activity {
         apiKey.setHintTextColor(0xFF82A3B5);
         apiKey.setHint(JarvisBrain.hasKey(this) ? "Ключ сохранён — введите новый для замены" : "OpenAI API key (sk-...)");
         apiKey.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
-        root.addView(apiKey);
+        advanced.addView(apiKey);
         Button save = action("СОХРАНИТЬ API-КЛЮЧ");
-        root.addView(save);
+        advanced.addView(save);
         save.setOnClickListener(v -> {
             String value = apiKey.getText().toString().trim();
             if (value.isEmpty()) { this.state.setText("Введите API-ключ"); return; }
@@ -243,17 +348,17 @@ public class MainActivity extends Activity {
         cloudVoice.setChecked(getSharedPreferences(PREFS, MODE_PRIVATE).getBoolean("cloud_voice", true));
         cloudVoice.setOnCheckedChangeListener((b, on) ->
             getSharedPreferences(PREFS, MODE_PRIVATE).edit().putBoolean("cloud_voice", on).apply());
-        root.addView(cloudVoice);
+        advanced.addView(cloudVoice);
 
         TextView fishTitle = text("ГОЛОС FISH AUDIO — JARVIS", 12, CYAN);
         fishTitle.setPadding(0, px(22), 0, px(7));
-        root.addView(fishTitle);
+        advanced.addView(fishTitle);
         TextView fishInfo = text("Fish Audio озвучивает ответы живым, выразительным голосом. " +
             "В списке голосов есть «Jarvis | Iron Man». Доступ и права на использование голоса регулируются Fish Audio. " +
             "Нужен интернет и отдельный Fish API-ключ.", 12, 0xFF93B3C8);
-        root.addView(fishInfo);
+        advanced.addView(fishInfo);
         Button fishWeb = action("♫   ПРОСЛУШАТЬ ГОЛОС НА FISH AUDIO");
-        root.addView(fishWeb);
+        advanced.addView(fishWeb);
         fishWeb.setOnClickListener(v -> startActivity(new Intent(Intent.ACTION_VIEW,
             android.net.Uri.parse(FishVoice.SOURCE_VOICE_URL))));
 
@@ -265,7 +370,7 @@ public class MainActivity extends Activity {
         fishKeyInput.setHint(FishVoice.getKey(this).isEmpty()
             ? "Fish Audio API key" : "Ключ Fish сохранён — введите новый для замены");
         fishKeyInput.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
-        root.addView(fishKeyInput);
+        advanced.addView(fishKeyInput);
 
         EditText fishVoiceId = new EditText(this);
         fishVoiceId.setTextColor(Color.WHITE);
@@ -274,10 +379,10 @@ public class MainActivity extends Activity {
         fishVoiceId.setHintTextColor(0xFF82A3B5);
         fishVoiceId.setHint("Fish Audio reference_id");
         fishVoiceId.setText(FishVoice.voiceId(this));
-        root.addView(fishVoiceId);
+        advanced.addView(fishVoiceId);
 
         Button fishSave = action("СОХРАНИТЬ НАСТРОЙКИ FISH AUDIO");
-        root.addView(fishSave);
+        advanced.addView(fishSave);
         fishSave.setOnClickListener(v -> {
             try {
                 String id = fishVoiceId.getText().toString().trim();
@@ -302,10 +407,10 @@ public class MainActivity extends Activity {
             if (enabled && FishVoice.getKey(this).isEmpty())
                 state.setText("Чтобы Fish Audio заработал, сохраните отдельный Fish API-ключ.");
         });
-        root.addView(fishEnabled);
+        advanced.addView(fishEnabled);
 
         Button fishPreview = action("▶   ПРОВЕРИТЬ ГОЛОС FISH AUDIO");
-        root.addView(fishPreview);
+        advanced.addView(fishPreview);
         fishPreview.setOnClickListener(v -> {
             if (FishVoice.getKey(this).isEmpty()) {
                 state.setText("Сначала введите и сохраните Fish Audio API-ключ.");
@@ -356,8 +461,8 @@ public class MainActivity extends Activity {
 
         TextView piperTitle = text("ГОЛОС БЕЗ ИНТЕРНЕТА — PIPER DMITRI", 12, CYAN);
         piperTitle.setPadding(0, px(22), 0, px(7));
-        root.addView(piperTitle);
-        root.addView(text("Русский мужской голос Дмитрий, встроенный в приложение. " +
+        advanced.addView(piperTitle);
+        advanced.addView(text("Русский мужской голос Дмитрий, встроенный в приложение. " +
             "Работает без Fish Audio и API-ключей. При первом использовании распакуется локально.", 12, 0xFF93B3C8));
         Switch piperToggle = new Switch(this);
         piperToggle.setText("Офлайн-голос Piper Dmitri");
@@ -365,9 +470,9 @@ public class MainActivity extends Activity {
         piperToggle.setTextColor(Color.WHITE);
         piperToggle.setChecked(PiperVoice.enabled(this));
         piperToggle.setOnCheckedChangeListener((b, enabled) -> PiperVoice.setEnabled(this, enabled));
-        root.addView(piperToggle);
+        advanced.addView(piperToggle);
         Button piperPreview = action("▶   ПРОВЕРИТЬ ОФЛАЙН-ГОЛОС");
-        root.addView(piperPreview);
+        advanced.addView(piperPreview);
         piperPreview.setOnClickListener(v -> {
             piperPreview.setEnabled(false);
             state.setText("Piper готовит голос... Это может занять несколько секунд.");
@@ -402,19 +507,19 @@ public class MainActivity extends Activity {
 
         TextView localTitle = text("АВТОМАТИЧЕСКИЙ ИИ: ОНЛАЙН / ОФЛАЙН", 12, CYAN);
         localTitle.setPadding(0, px(22), 0, px(7));
-        root.addView(localTitle);
+        advanced.addView(localTitle);
         TextView localDetail = text(LocalBrain.ready(this)
             ? "АВТО: доступен интернет и API-ключ → облачный ИИ; нет сети/ошибка API → локальный SmolLM2. Маленькая модель хуже отвечает на русском."
             : "АВТО: при доступном интернете и API-ключе работает облачный ИИ. Без них локальный SmolLM2 автоматически подготовится из APK (нужно около 105 МБ свободного места).", 12, 0xFF93B3C8);
-        root.addView(localDetail);
+        advanced.addView(localDetail);
         TextView strongInfo = text(LocalBrain.hasStrong(this)
             ? "Улучшенная русскоязычная модель Qwen2.5-0.5B уже установлена."
             : "Хотите лучшее качество офлайн-ответов? Можно отдельно установить Qwen2.5-0.5B (Apache 2.0). Загрузка около 398 МБ. Для коротких команд не нужна.", 12, 0xFF93B3C8);
-        root.addView(strongInfo);
+        advanced.addView(strongInfo);
         Button strongerModel = action(LocalBrain.hasStrong(this)
             ? "✓   QWEN2.5 УЖЕ УСТАНОВЛЕНА"
             : "↓   УСТАНОВИТЬ QWEN2.5 (398 МБ)");
-        root.addView(strongerModel);
+        advanced.addView(strongerModel);
         if (LocalBrain.hasStrong(this)) strongerModel.setEnabled(false);
         strongerModel.setOnClickListener(v -> new android.app.AlertDialog.Builder(this)
             .setTitle("Установить Qwen2.5-0.5B?")
@@ -453,9 +558,9 @@ public class MainActivity extends Activity {
         offline.setChecked(getSharedPreferences(PREFS, MODE_PRIVATE).getBoolean("offline_ai", false));
         offline.setOnCheckedChangeListener((b,on) ->
             getSharedPreferences(PREFS, MODE_PRIVATE).edit().putBoolean("offline_ai", on).apply());
-        root.addView(offline);
+        advanced.addView(offline);
         Button installModel = action("◈   ПОДГОТОВИТЬ ЛОКАЛЬНЫЙ ИИ");
-        root.addView(installModel);
+        advanced.addView(installModel);
         installModel.setOnClickListener(v -> {
             installModel.setEnabled(false);
             state.setText("Подготавливаю модель в памяти телефона...");
@@ -478,11 +583,12 @@ public class MainActivity extends Activity {
 
         TextView info = text("Голос синтезирован ИИ и не принадлежит актёру. Прослушивание работает только после запуска видимого сервиса с уведомлением. Android может приостанавливать распознавание в фоне.", 11, 0xFFA6B9CA);
         info.setPadding(0, px(18), 0, px(15));
-        root.addView(info);
+        advanced.addView(info);
     }
 
     private void addLine(String role, String s) {
         if (transcript == null) return;
+        if ("assistant".equals(role)) s = JarvisPersona.withSir(s);
         TextView item = text(("user".equals(role) ? "ВЫ   " : "JARVIS   ") + s, 13,
             "user".equals(role) ? 0xFFA7ECFF : Color.WHITE);
         item.setPadding(px(11), px(10), px(11), px(10));

@@ -110,6 +110,7 @@ public class JarvisService extends Service implements RecognitionListener, Jarvi
     }
 
     private void publish(String message, String role) {
+        message = "assistant".equals(role) ? JarvisPersona.withSir(message) : message;
         Intent event = new Intent(MainActivity.EVENT);
         event.setPackage(getPackageName());
         event.putExtra("message", message);
@@ -162,7 +163,7 @@ public class JarvisService extends Service implements RecognitionListener, Jarvi
             if (tail.isEmpty()) {
                 nextCommandUntil = SystemClock.elapsedRealtime() + 15000;
                 busy = true;
-                speak("Слушаю.", false);
+                speakFast("Слушаю.");
             } else {
                 nextCommandUntil = 0;
                 command(tail);
@@ -187,18 +188,21 @@ public class JarvisService extends Service implements RecognitionListener, Jarvi
         String lower = q.toLowerCase(Locale.ROOT).replace('ё', 'е');
         publish(q, "user");
 
+        String instantAnswer = FastMath.calculate(q);
         BasicCommands.Kind basic = BasicCommands.classify(lower);
-        if (basic != BasicCommands.Kind.NONE) {
+        if (instantAnswer != null) {
+            speakFast(instantAnswer);
+        } else if (basic != BasicCommands.Kind.NONE) {
             android.os.BatteryManager battery = getSystemService(android.os.BatteryManager.class);
             int percentage = battery == null ? -1 :
                 battery.getIntProperty(android.os.BatteryManager.BATTERY_PROPERTY_CAPACITY);
             // Deterministic fast reply. Do not block on an online TTS request.
-            speak(BasicCommands.answer(basic, new Date(), percentage), false);
+            speakFast(BasicCommands.answer(basic, new Date(), percentage));
         } else if (lower.contains("остановись") || lower.contains("выключись") || lower.contains("прекрати слушать")) {
             publish("Отключаюсь.", "assistant"); stopSelf();
         } else if (isDeviceCommand(lower)) {
-            String outcome = JarvisActions.handle(this, overlay, lower);
-            speak(outcome == null ? "Команда не распознана." : outcome, true);
+            String outcome = JarvisActions.handle(this, overlay, q);
+            speakFast(outcome == null ? "Команда не распознана." : outcome);
         } else if (lower.equals("привет") || lower.contains("ты тут")) {
             speak("Я на связи. Чем могу помочь?", true);
         } else {
@@ -252,12 +256,28 @@ public class JarvisService extends Service implements RecognitionListener, Jarvi
             q.contains("открой уведомления") || q.contains("шторку уведомлений") ||
             q.contains("быстрые настройки") || q.contains("панель быстрых") ||
             q.contains("прокрути ") || q.contains("листай ") ||
-            q.startsWith("нажми ") || q.startsWith("кликни ");
+            q.startsWith("нажми ") || q.startsWith("кликни ") ||
+            q.startsWith("введи ") || q.startsWith("напечатай ") ||
+            q.startsWith("напиши в поле ") || q.startsWith("вставь текст ") ||
+            q.contains("клавиатуру") || q.equals("очисти поле") ||
+            q.equals("очисти текст") || q.equals("сотри текст в поле") ||
+            q.equals("удали последний символ") || q.equals("сотри последнюю букву") ||
+            q.contains("прочитай экран") || q.contains("что на экране");
+    }
+
+    /** Fast path: do not queue neural inference, Fish API or first-run Piper model loading. */
+    private void speakFast(String text) {
+        if (!running) return;
+        text = JarvisPersona.withSir(text);
+        publish(text, "assistant");
+        speaking = true;
+        speakOnDevice(text);
     }
 
     private void speak(String text, boolean preferCloudVoice) {
         if (!running) return;
-        publish(text, "assistant");
+        final String spoken = JarvisPersona.withSir(text);
+        publish(spoken, "assistant");
         speaking = true;
 
         boolean hasNetwork = NetworkState.hasValidatedInternet(this);
@@ -269,16 +289,16 @@ public class JarvisService extends Service implements RecognitionListener, Jarvi
         if (fish) {
             network.execute(() -> {
                 File voice = null;
-                try { voice = FishVoice.synthesize(this, text); }
+                try { voice = FishVoice.synthesize(this, spoken); }
                 catch (Exception ignored) { /* transparently fall back to existing speech engines */ }
                 final File generated = voice;
                 handler.post(() -> {
                     if (!running) return;
-                    if (generated != null) playAudio(generated, text);
-                    else speakOfflineOrStandard(text, preferCloudVoice);
+                    if (generated != null) playAudio(generated, spoken);
+                    else speakOfflineOrStandard(spoken, preferCloudVoice);
                 });
             });
-        } else speakOfflineOrStandard(text, preferCloudVoice);
+        } else speakOfflineOrStandard(spoken, preferCloudVoice);
     }
 
     private void speakOfflineOrStandard(String text, boolean preferCloudVoice) {

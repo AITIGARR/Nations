@@ -66,7 +66,7 @@ final class JarvisOverlay {
 
     private WindowManager.LayoutParams layout(boolean full) {
         int width = full ? Math.min(ctx.getResources().getDisplayMetrics().widthPixels - dp(24), dp(430)) : dp(74);
-        int height = full ? dp(312) : dp(74);
+        int height = full ? dp(388) : dp(74);
         int flags = WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
             | (full ? WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
                     : WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE);
@@ -146,11 +146,15 @@ final class JarvisOverlay {
         LinearLayout shell = new LinearLayout(ctx);
         shell.setOrientation(LinearLayout.VERTICAL);
         shell.setPadding(dp(17), dp(12), dp(17), dp(13));
-        shell.setBackground(shape(0xF6081A2A, CYAN, 18));
+        GradientDrawable panelBackground = new GradientDrawable(
+            GradientDrawable.Orientation.TOP_BOTTOM, new int[]{0xF808304B, 0xF5031327});
+        panelBackground.setCornerRadius(dp(20));
+        panelBackground.setStroke(dp(1), CYAN);
+        shell.setBackground(panelBackground);
         shell.setElevation(dp(18));
         LinearLayout heading = new LinearLayout(ctx);
         heading.setGravity(Gravity.CENTER_VERTICAL);
-        TextView name = label("◉  J.A.R.V.I.S.", 21, CYAN);
+        TextView name = label("◉  J A R V I S", 21, CYAN);
         name.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
         heading.addView(name, new LinearLayout.LayoutParams(0, dp(43), 1f));
         Button close = button("—");
@@ -158,7 +162,7 @@ final class JarvisOverlay {
         close.setOnClickListener(v -> draw(false));
         shell.addView(heading);
 
-        TextView sub = label("ГОЛОСОВОЙ ПОМОЩНИК  •  ONLINE", 10, 0xFF78A6C2);
+        TextView sub = label("ВАШ ПОМОЩНИК  •  VOICE CONTROL", 10, 0xFF78A6C2);
         sub.setLetterSpacing(.06f);
         shell.addView(sub);
 
@@ -187,12 +191,29 @@ final class JarvisOverlay {
             });
         }
 
+        LinearLayout shortcuts = new LinearLayout(ctx);
+        shortcuts.setOrientation(LinearLayout.HORIZONTAL);
+        Button backButton = button("← Назад");
+        Button homeButton = button("⌂ Домой");
+        Button scrollButton = button("↓ Листать");
+        LinearLayout.LayoutParams c1 = new LinearLayout.LayoutParams(0, dp(39), 1f);
+        c1.rightMargin = dp(6);
+        shortcuts.addView(backButton, c1);
+        LinearLayout.LayoutParams c2 = new LinearLayout.LayoutParams(0, dp(39), 1f);
+        c2.rightMargin = dp(6);
+        shortcuts.addView(homeButton, c2);
+        shortcuts.addView(scrollButton, new LinearLayout.LayoutParams(0, dp(39), 1f));
+        shell.addView(shortcuts);
+        backButton.setOnClickListener(v -> { draw(false); listener.onCommand("назад"); });
+        homeButton.setOnClickListener(v -> { draw(false); listener.onCommand("домой"); });
+        scrollButton.setOnClickListener(v -> { draw(false); listener.onCommand("прокрути вниз"); });
+
         EditText ask = new EditText(ctx);
         ask.setTextColor(Color.WHITE);
         ask.setHintTextColor(0xFF6D91A8);
         ask.setTextSize(13);
         ask.setSingleLine(true);
-        ask.setHint("Спросите что-нибудь...");
+        ask.setHint("Задайте вопрос, сэр...");
         shell.addView(ask, new LinearLayout.LayoutParams(-1, dp(49)));
 
         LinearLayout row = new LinearLayout(ctx);
