@@ -232,7 +232,7 @@ public class JarvisService extends Service implements RecognitionListener, Jarvi
             final String key = JarvisBrain.getKey(this);
             final boolean useCloud = !forcedOffline && NetworkState.hasValidatedInternet(this)
                 && !key.isEmpty();
-            publish(useCloud ? "ИИ через интернет..." : "Локальный ИИ (без сети/API)...", "system");
+            publish(useCloud ? "ИИ через интернет..." : "Qwen2.5 — локальный ИИ...", "system");
             network.execute(() -> {
                 String answer;
                 boolean cloudAnswered = false;
@@ -291,7 +291,14 @@ public class JarvisService extends Service implements RecognitionListener, Jarvi
             q.contains("клавиатуру") || q.equals("очисти поле") ||
             q.equals("очисти текст") || q.equals("сотри текст в поле") ||
             q.equals("удали последний символ") || q.equals("сотри последнюю букву") ||
-            q.contains("прочитай экран") || q.contains("что на экране");
+            q.contains("прочитай экран") || q.contains("что на экране") ||
+            q.contains("покажи кнопки") || q.contains("какие кнопки на экране") ||
+            q.contains("пронумеруй кнопки") || q.contains("покажи элементы экрана") ||
+            q.startsWith("выбери номер ") || q.startsWith("нажми номер ") ||
+            q.startsWith("выбери кнопку ") || q.startsWith("нажми кнопку ") ||
+            q.contains("прокрути влево") || q.contains("прокрути вправо") ||
+            q.contains("листай влево") || q.contains("листай вправо") ||
+            q.contains("свайп влево") || q.contains("свайп вправо");
     }
 
     /** Fast path: do not queue neural inference, Fish API or first-run Piper model loading. */

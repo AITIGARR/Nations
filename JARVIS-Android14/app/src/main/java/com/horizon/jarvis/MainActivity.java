@@ -107,7 +107,7 @@ public class MainActivity extends Activity {
         headline.setGravity(Gravity.CENTER);
         root.addView(headline);
 
-        TextView subtitle = text("PERSONAL ASSISTANT  •  ANDROID 14  •  v0.9", 10, 0xFF7EAEC7);
+        TextView subtitle = text("PERSONAL ASSISTANT  •  ANDROID 14  •  v1.0", 10, 0xFF7EAEC7);
         subtitle.setGravity(Gravity.CENTER);
         subtitle.setLetterSpacing(.1f);
         root.addView(subtitle);
@@ -280,6 +280,9 @@ public class MainActivity extends Activity {
                 "«Джарвис, очисти поле»\n" +
                 "«Джарвис, открой клавиатуру»\n" +
                 "«Джарвис, прочитай экран»\n" +
+                "«Джарвис, покажи кнопки»\n" +
+                "«Джарвис, нажми номер 2»\n" +
+                "«Джарвис, листай влево»\n" +
                 "«Джарвис, прокрути вниз»\n" +
                 "«Джарвис, назад»\n\n" +
                 "Управление чужими приложениями требует отдельного разрешения «Специальные возможности».")
@@ -547,48 +550,12 @@ public class MainActivity extends Activity {
         localTitle.setPadding(0, px(22), 0, px(7));
         advanced.addView(localTitle);
         TextView localDetail = text(LocalBrain.ready(this)
-            ? "АВТО: доступен интернет и API-ключ → облачный ИИ; нет сети/ошибка API → локальный SmolLM2. Маленькая модель хуже отвечает на русском."
-            : "АВТО: при доступном интернете и API-ключе работает облачный ИИ. Без них локальный SmolLM2 автоматически подготовится из APK (нужно около 105 МБ свободного места).", 12, 0xFF93B3C8);
+            ? "QWEN 2.5 • Готово. Модель уже работает локально, без интернета."
+            : "QWEN 2.5 • Модель уже включена в APK (около 398 МБ). При первом офлайн-вопросе JARVIS один раз распакует её на телефон. Понадобится около 470 МБ свободного места.",
+            12, 0xFF93B3C8);
         advanced.addView(localDetail);
-        TextView strongInfo = text(LocalBrain.hasStrong(this)
-            ? "Улучшенная русскоязычная модель Qwen2.5-0.5B уже установлена."
-            : "Хотите лучшее качество офлайн-ответов? Можно отдельно установить Qwen2.5-0.5B (Apache 2.0). Загрузка около 398 МБ. Для коротких команд не нужна.", 12, 0xFF93B3C8);
+        TextView strongInfo = text("Встроенный интеллект: Qwen2.5-0.5B-Instruct Q4_K_M, Apache 2.0. Для работы не нужны подписки и API-ключи. Первоначальная загрузка модели занимает время, последующие ответы быстрее.", 12, 0xFF7AD8EC);
         advanced.addView(strongInfo);
-        Button strongerModel = action(LocalBrain.hasStrong(this)
-            ? "✓   QWEN2.5 УЖЕ УСТАНОВЛЕНА"
-            : "↓   УСТАНОВИТЬ QWEN2.5 (398 МБ)");
-        advanced.addView(strongerModel);
-        if (LocalBrain.hasStrong(this)) strongerModel.setEnabled(false);
-        strongerModel.setOnClickListener(v -> new android.app.AlertDialog.Builder(this)
-            .setTitle("Установить Qwen2.5-0.5B?")
-            .setMessage("Это открытая языковая модель, лучше приспособленная к русскому языку, чем встроенная SmolLM2.\n\n" +
-                "Для загрузки понадобится около 398 МБ трафика (Wi-Fi или мобильный интернет) и более 550 МБ свободной памяти. " +
-                "Это не системный ИИ: управление телефоном осуществляется отдельными Android-командами.")
-            .setNegativeButton("Отмена", null)
-            .setPositiveButton("Скачать", (dialog, which) -> {
-                strongerModel.setEnabled(false);
-                new Thread(() -> {
-                    String result;
-                    try {
-                        LocalBrain.downloadStrong(this, progress ->
-                            runOnUiThread(() -> { if (!isFinishing()) state.setText(progress); }));
-                        result = "Модель Qwen2.5 установлена и готова к офлайн-вопросам.";
-                    } catch (Exception e) {
-                        String why = e.getMessage();
-                        result = "Не удалось скачать Qwen: " + (why == null
-                            ? e.getClass().getSimpleName() : why);
-                    }
-                    final String message = result;
-                    runOnUiThread(() -> {
-                        if (!isFinishing()) {
-                            state.setText(message);
-                            strongerModel.setEnabled(!LocalBrain.hasStrong(this));
-                            strongInfo.setText(message);
-                        }
-                    });
-                }, "jarvis-qwen-download").start();
-            }).show());
-
         Switch offline = new Switch(this);
         offline.setText("Всегда офлайн — не использовать интернет для ответов");
         offline.setTextSize(12);
@@ -597,7 +564,7 @@ public class MainActivity extends Activity {
         offline.setOnCheckedChangeListener((b,on) ->
             getSharedPreferences(PREFS, MODE_PRIVATE).edit().putBoolean("offline_ai", on).apply());
         advanced.addView(offline);
-        Button installModel = action("◈   ПОДГОТОВИТЬ ЛОКАЛЬНЫЙ ИИ");
+        Button installModel = action("◈   ПОДГОТОВИТЬ ВСТРОЕННУЮ QWEN");
         advanced.addView(installModel);
         installModel.setOnClickListener(v -> {
             installModel.setEnabled(false);
@@ -606,7 +573,7 @@ public class MainActivity extends Activity {
                 String result;
                 try {
                     LocalBrain.install(this);
-                    result = "Локальная модель готова. В автоматическом режиме она используется при отсутствии интернета/API.";
+                    result = "Qwen2.5 готова и работает без интернета.";
                 } catch(Exception e) {
                     result = "Ошибка подготовки модели: " + e.getClass().getSimpleName();
                 }

@@ -16,6 +16,25 @@ final class JarvisActions {
     static String handle(JarvisService service, JarvisOverlay overlay, String spoken) {
         String q = normalize(spoken);
         String action = null;
+        if (q.equals("покажи кнопки") || q.equals("какие кнопки на экране")
+            || q.equals("пронумеруй кнопки") || q.equals("покажи элементы экрана")) {
+            if (!JarvisAccessibilityService.isConnected())
+                return "Сначала включите JARVIS в специальных возможностях Android.";
+            return JarvisAccessibilityService.listControls();
+        }
+        java.util.regex.Matcher button = java.util.regex.Pattern.compile(
+            "^(?:нажми|выбери|кликни)(?:\\s+на)?\\s+(?:номер|кнопку|элемент)\\s*(\\d{1,2})$").matcher(q);
+        if(button.find()) {
+            if(!JarvisAccessibilityService.isConnected())
+                return "Включите JARVIS в специальных возможностях Android.";
+            String number=button.group(1);
+            return JarvisAccessibilityService.execute("tap_number",number)
+                ? "Нажал элемент номер " + number + "." :
+                  "Не получилось нажать элемент. Снова произнесите «покажи кнопки».";
+        }
+        if(q.contains("листай влево") || q.contains("прокрути влево") || q.contains("свайп влево")) action="scroll_left";
+        else if(q.contains("листай вправо") || q.contains("прокрути вправо") || q.contains("свайп вправо")) action="scroll_right";
+
         // Multilingual Android intents. Protected actions remain user-controlled.
         String[] openPrefixes = {"open ", "launch ", "ouvre ", "abre ", "öffne ", "apri ", "abra ", "افتح ", "打开"};
         for (String prefix : openPrefixes)
@@ -118,6 +137,8 @@ final class JarvisActions {
             case "quick_settings": return "быстрые настройки";
             case "scroll_down": return "прокрутка вниз";
             case "scroll_up": return "прокрутка вверх";
+            case "scroll_left": return "прокрутка влево";
+            case "scroll_right": return "прокрутка вправо";
             case "show_keyboard": return "открытие клавиатуры";
             case "hide_keyboard": return "скрытие клавиатуры";
             case "clear_text": return "очистка выбранного поля";

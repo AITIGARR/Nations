@@ -25,22 +25,31 @@ Java_com_horizon_jarvis_LocalBrain_generate(JNIEnv* env,jclass,jstring pathStr,j
     if(cq)env->ReleaseStringUTFChars(questionStr,cq);
     static std::once_flag once;
     std::call_once(once,[]{llama_backend_init();});
-    llama_model_params mp=llama_model_default_params();
-    mp.n_gpu_layers=0;
-    llama_model* model=llama_model_load_from_file(path.c_str(),mp);
+    // Keep the Qwen model in RAM after the first prompt. Loading a 400MB GGUF
+    // for every question is much slower than the actual short inference.
+    static llama_model *cached_model = nullptr;
+    static std::string cached_path;
+    if (!cached_model || cached_path != path) {
+        if (cached_model) { llama_model_free(cached_model); cached_model = nullptr; }
+        llama_model_params mp=llama_model_default_params();
+        mp.n_gpu_layers=0;
+        cached_model=llama_model_load_from_file(path.c_str(),mp);
+        if (cached_model) cached_path=path;
+    }
+    llama_model* model=cached_model;
     if(!model)return env->NewStringUTF("GGUF could not be loaded.");
     const llama_vocab* vocab=llama_model_get_vocab(model);
     const std::string prompt=
         "<|im_start|>system\nYou are JARVIS, a concise helpful assistant. "
-        "Reply in the same language as the user's question when possible. Never claim to control the phone. "
+        "Reply in the user's language. Be accurate, brief, and helpful. "
         "Admit uncertainty.\n<|im_end|>\n"
         "<|im_start|>user\n"+question+"\n<|im_end|>\n<|im_start|>assistant\n";
     int n=llama_tokenize(vocab,prompt.c_str(),prompt.length(),nullptr,0,true,true);
     if(n<0)n=-n;
-    if(n<1 || n>1000){llama_model_free(model);return env->NewStringUTF("Prompt too long.");}
+    if(n<1 || n>1000){return env->NewStringUTF("Prompt too long.");}
     std::vector<llama_token> tokens(n);
     if(llama_tokenize(vocab,prompt.c_str(),prompt.length(),tokens.data(),n,true,true)<0){
-        llama_model_free(model);return env->NewStringUTF("Tokenization failed.");
+        return env->NewStringUTF("Tokenization failed.");
     }
     llama_context_params cpms=llama_context_default_params();
     cpms.n_ctx=1536;
@@ -48,7 +57,7 @@ Java_com_horizon_jarvis_LocalBrain_generate(JNIEnv* env,jclass,jstring pathStr,j
     cpms.n_threads=3;
     cpms.n_threads_batch=3;
     llama_context* ctx=llama_init_from_model(model,cpms);
-    if(!ctx){llama_model_free(model);return env->NewStringUTF("Cannot initialize local inference.");}
+    if(!ctx){return env->NewStringUTF("Cannot initialize local inference.");}
     llama_batch_ext* batch=llama_batch_ext_init(ctx);
     llama_sampler* sampler=llama_sampler_chain_init(llama_sampler_chain_default_params());
     llama_sampler_chain_add(sampler,llama_sampler_init_greedy());
@@ -68,6 +77,5 @@ Java_com_horizon_jarvis_LocalBrain_generate(JNIEnv* env,jclass,jstring pathStr,j
     llama_sampler_free(sampler);
     llama_batch_ext_free(batch);
     llama_free(ctx);
-    llama_model_free(model);
     return env->NewStringUTF(output.c_str());
 }

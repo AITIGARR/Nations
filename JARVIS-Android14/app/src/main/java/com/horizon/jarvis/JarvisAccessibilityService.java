@@ -32,6 +32,9 @@ public final class JarvisAccessibilityService extends AccessibilityService {
             case "quick_settings": return service.performGlobalAction(GLOBAL_ACTION_QUICK_SETTINGS);
             case "scroll_down": return service.swipe(true);
             case "scroll_up": return service.swipe(false);
+            case "scroll_left": return service.swipeHorizontal(true);
+            case "scroll_right": return service.swipeHorizontal(false);
+            case "tap_number": return service.tapNumber(argument);
             case "tap_text": return service.tapText(argument);
             case "type_text": return service.typeText(argument);
             case "clear_text": return service.editFocused("", false);
@@ -46,6 +49,92 @@ public final class JarvisAccessibilityService extends AccessibilityService {
         JarvisAccessibilityService service = current;
         if (service == null || Looper.myLooper() != Looper.getMainLooper()) return null;
         return service.screenText();
+    }
+
+    static String listControls() {
+        JarvisAccessibilityService service = current;
+        if (service == null || Looper.myLooper() != Looper.getMainLooper()) return null;
+        return service.describeControls();
+    }
+
+    private boolean swipeHorizontal(boolean left) {
+        int w=getResources().getDisplayMetrics().widthPixels;
+        int h=getResources().getDisplayMetrics().heightPixels;
+        Path gesture=new Path();
+        gesture.moveTo(w*(left ? .81f : .19f),h*.55f);
+        gesture.lineTo(w*(left ? .18f : .82f),h*.55f);
+        GestureDescription g=new GestureDescription.Builder()
+            .addStroke(new GestureDescription.StrokeDescription(gesture,0,370)).build();
+        return dispatchGesture(g,null,null);
+    }
+
+    private boolean restrictedScreen(AccessibilityNodeInfo root) {
+        if (root == null) return true;
+        String p=root.getPackageName()==null ? "" : root.getPackageName().toString().toLowerCase(Locale.ROOT);
+        for (String blocked : new String[]{
+            "bank", "finance", "wallet", "authenticator", "password", "keepass"
+        }) if(p.contains(blocked)) return true;
+        return false;
+    }
+
+    // Collect a bounded list of clickable, visible items, recreated before each selection.
+    private List<AccessibilityNodeInfo> safeControls(AccessibilityNodeInfo root) {
+        java.util.ArrayList<AccessibilityNodeInfo> result=new java.util.ArrayList<>();
+        if (restrictedScreen(root)) return result;
+        java.util.ArrayDeque<AccessibilityNodeInfo> queue=new java.util.ArrayDeque<>();
+        java.util.HashSet<String> names=new java.util.HashSet<>();
+        queue.add(root);int visited=0;
+        while(!queue.isEmpty() && visited++<220 && result.size()<12) {
+            AccessibilityNodeInfo node=queue.removeFirst();
+            if (node.isVisibleToUser() && node.isClickable() && !node.isPassword()
+                && !node.isEditable()) {
+                CharSequence title=node.getText();
+                if (title==null || title.length()==0) title=node.getContentDescription();
+                if(title!=null) {
+                    String text=title.toString().replaceAll("\\s+"," ").trim();
+                    if(text.length()>0 && text.length()<65 && !riskyLabel(text)
+                        && names.add(text.toLowerCase(Locale.ROOT))) result.add(node);
+                }
+            }
+            for(int i=0;i<node.getChildCount();i++) {
+                AccessibilityNodeInfo child=node.getChild(i);
+                if (child!=null) queue.addLast(child);
+            }
+        }
+        return result;
+    }
+
+    private String describeControls() {
+        AccessibilityNodeInfo root=getRootInActiveWindow();
+        if(root==null) return "Android не предоставил элементы экрана.";
+        try {
+            if(restrictedScreen(root)) return "На защищённом экране управление кнопками отключено.";
+            List<AccessibilityNodeInfo> nodes=safeControls(root);
+            if(nodes.isEmpty()) return "Не найдено доступных кнопок для нумерации.";
+            StringBuilder message=new StringBuilder("Доступные элементы: ");
+            for(int i=0;i<nodes.size();i++) {
+                if(i>0) message.append("; ");
+                AccessibilityNodeInfo node=nodes.get(i);
+                CharSequence title=node.getText();
+                if(title==null || title.length()==0) title=node.getContentDescription();
+                message.append(i+1).append(" — ").append(title);
+            }
+            message.append(". Скажите: нажми номер 1.");
+            return message.toString();
+        } finally {root.recycle();}
+    }
+
+    private boolean tapNumber(String argument) {
+        try {
+            int number=Integer.parseInt(argument.trim());
+            if(number<1 || number>12) return false;
+            AccessibilityNodeInfo root=getRootInActiveWindow();
+            if(root==null)return false;
+            try {
+                List<AccessibilityNodeInfo> nodes=safeControls(root);
+                return number<=nodes.size() && nodes.get(number-1).performAction(AccessibilityNodeInfo.ACTION_CLICK);
+            } finally {root.recycle();}
+        } catch(Exception ignored) {return false;}
     }
 
     @Override protected void onServiceConnected() {

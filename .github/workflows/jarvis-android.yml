@@ -31,13 +31,22 @@ jobs:
           git -C "$DIR" remote add origin https://github.com/ggml-org/llama.cpp.git
           git -C "$DIR" fetch --depth 1 origin 23b0202a189c44a54625aadcb37a946dd1d6278d
           git -C "$DIR" checkout --detach FETCH_HEAD
-      - name: Download licensed 135M offline GGUF model
+      - name: Download Qwen2.5 0.5B offline GGUF (Apache-2.0)
         run: |
+          set -euo pipefail
           mkdir -p JARVIS-Android14/app/src/main/assets
-          curl --fail --location --retry 3 --connect-timeout 20 --max-time 240 \
-            'https://huggingface.co/bartowski/SmolLM2-135M-Instruct-GGUF/resolve/main/SmolLM2-135M-Instruct-Q4_K_M.gguf?download=true' \
-            -o JARVIS-Android14/app/src/main/assets/SmolLM2-135M-Instruct-Q4_K_M.gguf
-          test "$(stat -c%s JARVIS-Android14/app/src/main/assets/SmolLM2-135M-Instruct-Q4_K_M.gguf)" -gt 95000000
+          curl --fail --location --retry 4 --retry-delay 3 --connect-timeout 30 --max-time 600 \
+            'https://huggingface.co/bartowski/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/Qwen2.5-0.5B-Instruct-Q4_K_M.gguf?download=true' \
+            -o JARVIS-Android14/app/src/main/assets/Qwen2.5-0.5B-Instruct-Q4_K_M.gguf
+          python3 - <<'PY'
+          import os
+          name = 'JARVIS-Android14/app/src/main/assets/Qwen2.5-0.5B-Instruct-Q4_K_M.gguf'
+          size = os.path.getsize(name)
+          assert 350_000_000 < size < 455_000_000, f'invalid GGUF size: {size}'
+          with open(name, 'rb') as file:
+              assert file.read(4) == b'GGUF'
+          print('Bundled Qwen2.5 model verified:', size, 'bytes')
+          PY
       - name: Add offline Russian voice assets (Piper Dmitri int8)
         run: |
           set -euo pipefail
