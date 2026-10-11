@@ -88,7 +88,7 @@ public class MainActivity extends Activity {
         headline.setGravity(Gravity.CENTER);
         root.addView(headline);
 
-        TextView subtitle = text("PERSONAL ARTIFICIAL INTELLIGENCE  //  06", 10, 0xFF7EAEC7);
+        TextView subtitle = text("PERSONAL ARTIFICIAL INTELLIGENCE  //  07", 10, 0xFF7EAEC7);
         subtitle.setGravity(Gravity.CENTER);
         subtitle.setLetterSpacing(.1f);
         root.addView(subtitle);
@@ -351,6 +351,52 @@ public class MainActivity extends Activity {
                     }
                 });
             }, "jarvis-fish-preview").start();
+        });
+
+        TextView piperTitle = text("ГОЛОС БЕЗ ИНТЕРНЕТА — PIPER DMITRI", 12, CYAN);
+        piperTitle.setPadding(0, px(22), 0, px(7));
+        root.addView(piperTitle);
+        root.addView(text("Русский мужской голос Дмитрий, встроенный в приложение. " +
+            "Работает без Fish Audio и API-ключей. При первом использовании распакуется локально.", 12, 0xFF93B3C8));
+        Switch piperToggle = new Switch(this);
+        piperToggle.setText("Офлайн-голос Piper Dmitri");
+        piperToggle.setTextSize(12);
+        piperToggle.setTextColor(Color.WHITE);
+        piperToggle.setChecked(PiperVoice.enabled(this));
+        piperToggle.setOnCheckedChangeListener((b, enabled) -> PiperVoice.setEnabled(this, enabled));
+        root.addView(piperToggle);
+        Button piperPreview = action("▶   ПРОВЕРИТЬ ОФЛАЙН-ГОЛОС");
+        root.addView(piperPreview);
+        piperPreview.setOnClickListener(v -> {
+            piperPreview.setEnabled(false);
+            state.setText("Piper готовит голос... Это может занять несколько секунд.");
+            new Thread(() -> {
+                File voice = null;
+                String error = null;
+                try {
+                    voice = new File(PiperVoice.synthesize(this,
+                        "Добрый вечер. Джарвис на связи. Все системы работают штатно."));
+                } catch (Exception e) { error = e.getClass().getSimpleName(); }
+                final File audio = voice;
+                final String problem = error;
+                runOnUiThread(() -> {
+                    piperPreview.setEnabled(true);
+                    if (isFinishing()) return;
+                    if (audio == null) {
+                        state.setText("Ошибка Piper: " + problem);
+                        return;
+                    }
+                    try {
+                        android.media.MediaPlayer sample = new android.media.MediaPlayer();
+                        sample.setDataSource(audio.getAbsolutePath());
+                        sample.setOnCompletionListener(p -> p.release());
+                        sample.setOnErrorListener((p, what, extra) -> { p.release(); return true; });
+                        sample.prepare();
+                        sample.start();
+                        state.setText("Проигрываю офлайн-голос Piper Dmitri.");
+                    } catch (Exception e) { state.setText("Не удалось воспроизвести Piper."); }
+                });
+            }, "jarvis-piper-test").start();
         });
 
         TextView localTitle = text("АВТОМАТИЧЕСКИЙ ИИ: ОНЛАЙН / ОФЛАЙН", 12, CYAN);

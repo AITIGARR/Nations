@@ -275,6 +275,26 @@ public class JarvisService extends Service implements RecognitionListener, Jarvi
                 handler.post(() -> {
                     if (!running) return;
                     if (generated != null) playAudio(generated, text);
+                    else speakOfflineOrStandard(text, preferCloudVoice);
+                });
+            });
+        } else speakOfflineOrStandard(text, preferCloudVoice);
+    }
+
+    private void speakOfflineOrStandard(String text, boolean preferCloudVoice) {
+        if (PiperVoice.enabled(this) && !"Слушаю.".equals(text)) {
+            network.execute(() -> {
+                File generated = null;
+                try {
+                    generated = new File(PiperVoice.synthesize(this, text));
+                } catch (Exception e) {
+                    // Keep built-in Android voice available if voice files/native runtime fail.
+                    android.util.Log.w("JARVIS", "Piper offline voice unavailable: " + e.getClass().getSimpleName());
+                }
+                File wav = generated;
+                handler.post(() -> {
+                    if (!running) return;
+                    if (wav != null && wav.isFile()) playAudio(wav, text);
                     else speakStandard(text, preferCloudVoice);
                 });
             });

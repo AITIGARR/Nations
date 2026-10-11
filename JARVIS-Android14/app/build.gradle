@@ -1,5 +1,6 @@
 plugins {
     id 'com.android.application'
+    id 'org.jetbrains.kotlin.android'
 }
 android {
     namespace 'com.horizon.jarvis'
@@ -9,8 +10,8 @@ android {
         minSdk 26
         targetSdk 34
         ndk { abiFilters 'arm64-v8a' }
-        versionCode 7
-        versionName '0.6.0'
+        versionCode 8
+        versionName '0.7.0'
     }
     ndkVersion '27.2.12479018'
     externalNativeBuild {
@@ -25,6 +26,22 @@ android {
     testOptions {
         unitTests.returnDefaultValues = true
     }
+    def signingPath = System.getenv("JARVIS_KEYSTORE_PATH")
+    if (signingPath != null && file(signingPath).exists()) {
+        signingConfigs {
+            stable {
+                storeFile file(signingPath)
+                storePassword System.getenv("JARVIS_STORE_PASSWORD")
+                keyAlias System.getenv("JARVIS_KEY_ALIAS") ?: "jarvis"
+                keyPassword System.getenv("JARVIS_KEY_PASSWORD")
+            }
+        }
+        buildTypes {
+            debug {
+                signingConfig signingConfigs.stable
+            }
+        }
+    }
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
@@ -32,5 +49,6 @@ android {
 }
 
 dependencies {
+    implementation files('libs/sherpa-onnx-1.13.8.aar')
     testImplementation 'junit:junit:4.13.2'
 }

@@ -38,6 +38,40 @@ jobs:
             'https://huggingface.co/bartowski/SmolLM2-135M-Instruct-GGUF/resolve/main/SmolLM2-135M-Instruct-Q4_K_M.gguf?download=true' \
             -o JARVIS-Android14/app/src/main/assets/SmolLM2-135M-Instruct-Q4_K_M.gguf
           test "$(stat -c%s JARVIS-Android14/app/src/main/assets/SmolLM2-135M-Instruct-Q4_K_M.gguf)" -gt 95000000
+      - name: Add offline Russian voice assets (Piper Dmitri int8)
+        run: |
+          set -euo pipefail
+          mkdir -p JARVIS-Android14/app/src/main/assets/piper JARVIS-Android14/app/libs /tmp/piper-extract
+          curl -fL --retry 3 --connect-timeout 25 --max-time 300 \
+            https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-piper-ru_RU-dmitri-medium-int8.tar.bz2 \
+            -o /tmp/piper-dmitri.tar.bz2
+          tar -xjf /tmp/piper-dmitri.tar.bz2 -C /tmp/piper-extract
+          MODEL=$(find /tmp/piper-extract -type f -name '*.onnx' -print -quit)
+          test -n "$MODEL"
+          cp -a "$(dirname "$MODEL")/." JARVIS-Android14/app/src/main/assets/piper/
+          test -f JARVIS-Android14/app/src/main/assets/piper/tokens.txt
+          test -d JARVIS-Android14/app/src/main/assets/piper/espeak-ng-data
+          curl -fL --retry 3 --connect-timeout 25 --max-time 300 \
+            https://github.com/k2-fsa/sherpa-onnx/releases/download/v1.13.8/sherpa-onnx-1.13.8.aar \
+            -o JARVIS-Android14/app/libs/sherpa-onnx-1.13.8.aar
+          unzip -t JARVIS-Android14/app/libs/sherpa-onnx-1.13.8.aar > /dev/null
+      - name: Optional stable app signing from repository secrets
+        env:
+          JARVIS_KEYSTORE_BASE64: ${{ secrets.JARVIS_KEYSTORE_BASE64 }}
+          JARVIS_STORE_PASSWORD: ${{ secrets.JARVIS_STORE_PASSWORD }}
+          JARVIS_KEY_PASSWORD: ${{ secrets.JARVIS_KEY_PASSWORD }}
+          JARVIS_KEY_ALIAS: ${{ secrets.JARVIS_KEY_ALIAS }}
+        run: |
+          if [ -n "$JARVIS_KEYSTORE_BASE64" ] && [ -n "$JARVIS_STORE_PASSWORD" ] && [ -n "$JARVIS_KEY_PASSWORD" ]; then
+            printf '%s' "$JARVIS_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/jarvis-stable.jks"
+            echo "JARVIS_KEYSTORE_PATH=$RUNNER_TEMP/jarvis-stable.jks" >> "$GITHUB_ENV"
+            echo "JARVIS_STORE_PASSWORD=$JARVIS_STORE_PASSWORD" >> "$GITHUB_ENV"
+            echo "JARVIS_KEY_PASSWORD=$JARVIS_KEY_PASSWORD" >> "$GITHUB_ENV"
+            echo "JARVIS_KEY_ALIAS=${JARVIS_KEY_ALIAS:-jarvis}" >> "$GITHUB_ENV"
+            echo "Using user-provided stable signing key"
+          else
+            echo "::warning::No stable signing secrets. Debug APK will use an ephemeral key and may not upgrade previous versions."
+          fi
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
