@@ -27,6 +27,8 @@ public class JarvisService extends Service implements RecognitionListener, Jarvi
     private String queuedTts;
     private Runnable restart;
     private long nextCommandUntil;
+    private String detectedLanguage = "ru-RU";
+    private boolean autoRecognitionFallback = false;
 
     @Override public void onCreate() {
         super.onCreate();
@@ -138,7 +140,18 @@ public class JarvisService extends Service implements RecognitionListener, Jarvi
                 Intent speech = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
                 speech.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL,
                     RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
-                speech.putExtra(RecognizerIntent.EXTRA_LANGUAGE, "ru-RU");
+                String selectedLanguage = MultilingualSpeech.validated(
+                    getSharedPreferences(MainActivity.PREFS, MODE_PRIVATE)
+                        .getString(MultilingualSpeech.PREF_LANGUAGE, MultilingualSpeech.AUTO));
+                if (!MultilingualSpeech.AUTO.equals(selectedLanguage)) {
+                    speech.putExtra(RecognizerIntent.EXTRA_LANGUAGE, selectedLanguage);
+                } else if (Build.VERSION.SDK_INT >= 34 && !autoRecognitionFallback) {
+                    speech.putExtra(RecognizerIntent.EXTRA_ENABLE_LANGUAGE_DETECTION, true);
+                    speech.putExtra(RecognizerIntent.EXTRA_ENABLE_LANGUAGE_SWITCH,
+                        RecognizerIntent.LANGUAGE_SWITCH_BALANCED);
+                } else {
+                    speech.putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault().toLanguageTag());
+                }
                 speech.putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true);
                 speech.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3);
                 listening = true;
@@ -151,26 +164,27 @@ public class JarvisService extends Service implements RecognitionListener, Jarvi
         handler.postDelayed(restart, delay);
     }
 
-    private void heard(String words) {
-        String lower = words.toLowerCase(Locale.ROOT).replace('ё', 'е');
-        int at = -1, size = 0;
-        for (String word : new String[] {"джарвис", "жарвис", "джервис", "jarvis"}) {
-            int i = lower.indexOf(word);
-            if (i != -1 && (at == -1 || i < at)) { at = i; size = word.length(); }
+    private void heard(ArrayList<String> hypotheses) {
+        if (hypotheses == null || hypotheses.isEmpty()) { schedule(700); return; }
+        String fallback = hypotheses.get(0);
+        String found = null;
+        for (String phrase : hypotheses) {
+            if (phrase == null) continue;
+            String candidate = MultilingualSpeech.wakeCommand(phrase);
+            if (candidate != null) { found = candidate; break; }
         }
-        if (at >= 0) {
-            String tail = words.substring(at + size).replaceFirst("^[\\s,.:!?—-]+", "").trim();
-            if (tail.isEmpty()) {
+        if (found != null) {
+            nextCommandUntil = 0;
+            if (found.isEmpty()) {
                 nextCommandUntil = SystemClock.elapsedRealtime() + 15000;
                 busy = true;
                 speakFast("Слушаю.");
             } else {
-                nextCommandUntil = 0;
-                command(tail);
+                command(found);
             }
         } else if (SystemClock.elapsedRealtime() < nextCommandUntil) {
             nextCommandUntil = 0;
-            command(words);
+            command(fallback);
         } else schedule(700);
     }
 
@@ -190,6 +204,8 @@ public class JarvisService extends Service implements RecognitionListener, Jarvi
 
         String instantAnswer = FastMath.calculate(q);
         BasicCommands.Kind basic = BasicCommands.classify(lower);
+        String skillAnswer = basic == BasicCommands.Kind.NONE && instantAnswer == null
+            ? JarvisSkills.handle(this, overlay, q) : null;
         if (instantAnswer != null) {
             speakFast(instantAnswer);
         } else if (basic != BasicCommands.Kind.NONE) {
@@ -197,7 +213,12 @@ public class JarvisService extends Service implements RecognitionListener, Jarvi
             int percentage = battery == null ? -1 :
                 battery.getIntProperty(android.os.BatteryManager.BATTERY_PROPERTY_CAPACITY);
             // Deterministic fast reply. Do not block on an online TTS request.
-            speakFast(BasicCommands.answer(basic, new Date(), percentage));
+            String chosen = getSharedPreferences(MainActivity.PREFS, MODE_PRIVATE)
+                .getString(MultilingualSpeech.PREF_LANGUAGE, MultilingualSpeech.AUTO);
+            String tag = MultilingualSpeech.AUTO.equals(chosen) ? detectedLanguage : chosen;
+            speakFast(BasicCommands.answer(basic, new Date(), percentage, tag));
+        } else if (skillAnswer != null) {
+            speakFast(skillAnswer);
         } else if (lower.contains("остановись") || lower.contains("выключись") || lower.contains("прекрати слушать")) {
             publish("Отключаюсь.", "assistant"); stopSelf();
         } else if (isDeviceCommand(lower)) {
@@ -247,7 +268,15 @@ public class JarvisService extends Service implements RecognitionListener, Jarvi
     }
 
     private boolean isDeviceCommand(String q) {
-        return q.startsWith("открой ") || q.startsWith("запусти ") ||
+        return q.startsWith("open ") || q.startsWith("launch ") ||
+            q.startsWith("ouvre ") || q.startsWith("abre ") ||
+            q.startsWith("öffne ") || q.startsWith("apri ") || q.startsWith("abra ") ||
+            q.startsWith("افتح ") || q.startsWith("打开") ||
+            q.equals("go back") || q.equals("back") || q.equals("home") ||
+            q.equals("scroll down") || q.equals("scroll up") ||
+            q.startsWith("type ") || q.startsWith("enter text ") ||
+            q.startsWith("tap ") || q.equals("read the screen") ||
+            q.startsWith("открой ") || q.startsWith("запусти ") ||
             q.startsWith("включи приложение ") || q.startsWith("открыть ") ||
             q.startsWith("покажи приложение ") || q.startsWith("зайди в ") ||
             q.contains("назад") || q.equals("домой") || q.contains("на главный экран") ||
@@ -302,7 +331,8 @@ public class JarvisService extends Service implements RecognitionListener, Jarvi
     }
 
     private void speakOfflineOrStandard(String text, boolean preferCloudVoice) {
-        if (PiperVoice.enabled(this) && !"Слушаю.".equals(text)) {
+        if (PiperVoice.enabled(this) && "ru".equals(currentLocale().getLanguage())
+            && !text.startsWith("Слушаю")) {
             network.execute(() -> {
                 File generated = null;
                 try {
@@ -365,8 +395,17 @@ public class JarvisService extends Service implements RecognitionListener, Jarvi
         }
     }
 
+    private Locale currentLocale() {
+        String selected = getSharedPreferences(MainActivity.PREFS, MODE_PRIVATE)
+            .getString(MultilingualSpeech.PREF_LANGUAGE, MultilingualSpeech.AUTO);
+        return MultilingualSpeech.voiceLocale(selected, detectedLanguage);
+    }
+
     private void speakOnDevice(String text) {
         if (ttsReady && tts != null) {
+            Locale lang = currentLocale();
+            if (tts.isLanguageAvailable(lang) >= TextToSpeech.LANG_AVAILABLE)
+                tts.setLanguage(lang);
             int res = tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, "jarvis_v2_reply");
             if (res == TextToSpeech.ERROR) finishSpeech();
         } else if (tts != null) {
@@ -398,11 +437,29 @@ public class JarvisService extends Service implements RecognitionListener, Jarvi
     @Override public void onResults(Bundle results) {
         listening = false;
         ArrayList<String> words = results.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
-        if (words != null && !words.isEmpty()) heard(words.get(0));
+        if (words != null && !words.isEmpty()) heard(words);
         else schedule(900);
+    }
+    @Override public void onLanguageDetection(Bundle results) {
+        if (Build.VERSION.SDK_INT < 34 || results == null) return;
+        String tag = results.getString(SpeechRecognizer.DETECTED_LANGUAGE);
+        if (tag != null && tag.matches("[a-zA-Z]{2,3}(-[a-zA-Z0-9]{2,8}){0,3}")
+            && !tag.equalsIgnoreCase("und") && !tag.equalsIgnoreCase(detectedLanguage)) {
+            detectedLanguage = tag;
+            publish("Язык речи: " + MultilingualSpeech.shortLabel(tag), "system");
+        }
     }
     @Override public void onError(int error) {
         listening = false;
+        if (Build.VERSION.SDK_INT >= 34 &&
+            (error == SpeechRecognizer.ERROR_LANGUAGE_NOT_SUPPORTED ||
+             error == SpeechRecognizer.ERROR_LANGUAGE_UNAVAILABLE)) {
+            if (!autoRecognitionFallback) {
+                autoRecognitionFallback = true;
+                publish("Автоопределение языка недоступно; переключаюсь на системный язык. "
+                    + "Можно выбрать язык вручную.", "system");
+            }
+        }
         if (error == SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS) {
             publish("Распознавание остановлено: разрешение микрофона отозвано.", "system");
             stopSelf();

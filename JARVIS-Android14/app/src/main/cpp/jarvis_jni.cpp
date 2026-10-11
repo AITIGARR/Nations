@@ -32,7 +32,7 @@ Java_com_horizon_jarvis_LocalBrain_generate(JNIEnv* env,jclass,jstring pathStr,j
     const llama_vocab* vocab=llama_model_get_vocab(model);
     const std::string prompt=
         "<|im_start|>system\nYou are JARVIS, a concise helpful assistant. "
-        "If you can, respond in Russian. Never claim to control the phone. "
+        "Reply in the same language as the user's question when possible. Never claim to control the phone. "
         "Admit uncertainty.\n<|im_end|>\n"
         "<|im_start|>user\n"+question+"\n<|im_end|>\n<|im_start|>assistant\n";
     int n=llama_tokenize(vocab,prompt.c_str(),prompt.length(),nullptr,0,true,true);

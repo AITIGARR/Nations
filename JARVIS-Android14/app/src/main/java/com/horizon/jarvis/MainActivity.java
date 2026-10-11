@@ -107,7 +107,7 @@ public class MainActivity extends Activity {
         headline.setGravity(Gravity.CENTER);
         root.addView(headline);
 
-        TextView subtitle = text("PERSONAL ASSISTANT  •  ANDROID 14  •  v0.8", 10, 0xFF7EAEC7);
+        TextView subtitle = text("PERSONAL ASSISTANT  •  ANDROID 14  •  v0.9", 10, 0xFF7EAEC7);
         subtitle.setGravity(Gravity.CENTER);
         subtitle.setLetterSpacing(.1f);
         root.addView(subtitle);
@@ -145,10 +145,42 @@ public class MainActivity extends Activity {
         indicators.addView(accessLabel, new LinearLayout.LayoutParams(0, -2, 1));
         root.addView(indicators);
 
-        TextView caption = text("СКАЖИ «ДЖАРВИС» И ЗАДАЙ ВОПРОС", 11, 0xFF84B3C9);
+        TextView caption = text("СКАЖИ «ДЖАРВИС» — ЯЗЫК МОЖНО ИЗМЕНИТЬ", 11, 0xFF84B3C9);
         caption.setGravity(Gravity.CENTER);
         caption.setPadding(0, px(10), 0, px(6));
         root.addView(caption);
+
+        TextView languageTitle = text("ЯЗЫК И РАСПОЗНАВАНИЕ АКЦЕНТА", 12, CYAN);
+        languageTitle.setPadding(0, px(11), 0, px(6));
+        root.addView(languageTitle);
+
+        Spinner languagePicker = new Spinner(this);
+        ArrayAdapter<String> languageOptions = new ArrayAdapter<>(this,
+            android.R.layout.simple_spinner_dropdown_item, MultilingualSpeech.LANGUAGE_LABELS);
+        languagePicker.setAdapter(languageOptions);
+        languagePicker.setBackground(bg(PANEL, LINE, px(12)));
+        languagePicker.setPadding(px(8), px(3), px(8), px(3));
+        String selected = getSharedPreferences(PREFS, MODE_PRIVATE)
+            .getString(MultilingualSpeech.PREF_LANGUAGE, MultilingualSpeech.AUTO);
+        languagePicker.setSelection(MultilingualSpeech.optionIndex(selected));
+        languagePicker.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener() {
+            @Override public void onItemSelected(android.widget.AdapterView<?> parent,
+                View view, int position, long id) {
+                if (position < 0 || position >= MultilingualSpeech.LANGUAGE_TAGS.length) return;
+                String tag = MultilingualSpeech.LANGUAGE_TAGS[position];
+                getSharedPreferences(PREFS, MODE_PRIVATE).edit()
+                    .putString(MultilingualSpeech.PREF_LANGUAGE, tag).apply();
+            }
+            @Override public void onNothingSelected(android.widget.AdapterView<?> parent) {}
+        });
+        root.addView(languagePicker, new LinearLayout.LayoutParams(-1, px(48)));
+        TextView accentHelp = text(
+            "АВТО: Android определяет и переключает языки, если движок это поддерживает. " +
+            "Если акцент распознаётся плохо — выберите язык и диалект вручную. " +
+            "Доступность языков зависит от движка речи и загруженных языковых пакетов.",
+            11, 0xFF8FB2C5);
+        accentHelp.setPadding(0, px(7), 0, px(10));
+        root.addView(accentHelp);
 
         Button start = action("◉   ЗАПУСТИТЬ ГОЛОСОВОЙ РЕЖИМ");
         root.addView(start);
@@ -219,7 +251,10 @@ public class MainActivity extends Activity {
         quickRow.addView(timeShortcut, cellOne);
         timeShortcut.setOnClickListener(v -> {
             String answer = JarvisPersona.withSir(BasicCommands.answer(
-                BasicCommands.Kind.TIME, new Date(), -1));
+                BasicCommands.Kind.TIME, new Date(), -1,
+                MultilingualSpeech.voiceLocale(
+                    getSharedPreferences(PREFS, MODE_PRIVATE).getString(
+                        MultilingualSpeech.PREF_LANGUAGE, MultilingualSpeech.AUTO), null).toLanguageTag()));
             state.setText(answer);
             addLine("assistant", answer);
         });
@@ -290,7 +325,10 @@ public class MainActivity extends Activity {
                     int percentage = battery == null ? -1 :
                         battery.getIntProperty(android.os.BatteryManager.BATTERY_PROPERTY_CAPACITY);
                     addLine("user", q);
-                    String response = JarvisPersona.withSir(BasicCommands.answer(basic, new Date(), percentage));
+                    String languageTag = getSharedPreferences(PREFS, MODE_PRIVATE).getString(
+                        MultilingualSpeech.PREF_LANGUAGE, MultilingualSpeech.AUTO);
+                    String response = JarvisPersona.withSir(BasicCommands.answer(basic, new Date(),
+                        percentage, MultilingualSpeech.AUTO.equals(languageTag) ? "ru-RU" : languageTag));
                     addLine("assistant", response);
                     state.setText(response);
                     input.setText("");

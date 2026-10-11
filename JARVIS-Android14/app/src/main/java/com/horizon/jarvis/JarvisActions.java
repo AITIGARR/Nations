@@ -16,6 +16,40 @@ final class JarvisActions {
     static String handle(JarvisService service, JarvisOverlay overlay, String spoken) {
         String q = normalize(spoken);
         String action = null;
+        // Multilingual Android intents. Protected actions remain user-controlled.
+        String[] openPrefixes = {"open ", "launch ", "ouvre ", "abre ", "öffne ", "apri ", "abra ", "افتح ", "打开"};
+        for (String prefix : openPrefixes)
+            if (q.startsWith(prefix)) return launch(service, overlay, q.substring(prefix.length()).trim());
+        if (q.equals("back") || q.equals("go back") || q.equals("retour")
+            || q.equals("zurück") || q.equals("atrás")) action = "back";
+        else if (q.equals("home") || q.equals("go home")
+            || q.equals("accueil") || q.equals("inicio")) action = "home";
+        else if (q.equals("scroll down") || q.equals("scroll hacia abajo") ||
+            q.equals("nach unten scrollen") || q.equals("défiler vers le bas")) action = "scroll_down";
+        else if (q.equals("scroll up") || q.equals("scroll hacia arriba") ||
+            q.equals("nach oben scrollen") || q.equals("défiler vers le haut")) action = "scroll_up";
+        else if (q.equals("read the screen") || q.equals("what's on the screen")
+            || q.equals("lis l'écran") || q.equals("lee la pantalla")) {
+            if (!JarvisAccessibilityService.isConnected())
+                return "Чтобы прочитать экран, включите JARVIS в специальных возможностях.";
+            return JarvisAccessibilityService.describeScreen();
+        } else if (q.startsWith("type ") || q.startsWith("enter text ")
+            || q.startsWith("escribe ") || q.startsWith("écris ")) {
+            int length = q.startsWith("enter text ") ? 11 :
+                q.startsWith("escribe ") ? 8 : q.startsWith("écris ") ? 6 : 5;
+            String value = spoken.trim().substring(length);
+            if (!JarvisAccessibilityService.isConnected())
+                return "Включите специальные возможности, чтобы вводить текст.";
+            return JarvisAccessibilityService.execute("type_text", value)
+                ? "Текст введён в выбранное поле." :
+                  "Выберите редактируемое поле. Поля паролей недоступны.";
+        } else if (q.startsWith("tap ") || q.startsWith("click ")) {
+            String label = q.substring(q.startsWith("tap ") ? 4 : 6).trim();
+            if (!JarvisAccessibilityService.isConnected())
+                return "Включите специальные возможности для нажатий.";
+            return JarvisAccessibilityService.execute("tap_text", label)
+                ? "Элемент нажат." : "Не удалось нажать на указанный элемент.";
+        }
         // Explicit, user-directed text entry into the CURRENT focused editable field.
         // Accessibility refuses passwords and never automatically presses Send/Enter.
         for (String prefix : new String[] {"введи текст ", "напечатай ", "напиши в поле ", "вставь текст ", "введи "}) {
