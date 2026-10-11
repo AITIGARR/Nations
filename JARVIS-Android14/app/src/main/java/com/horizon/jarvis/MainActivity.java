@@ -12,6 +12,7 @@ import android.text.InputType;
 import android.view.*;
 import android.widget.*;
 import java.util.*;
+import java.io.File;
 
 public class MainActivity extends Activity {
     static final String PREFS = "jarvis_v2";

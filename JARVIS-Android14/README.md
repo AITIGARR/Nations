@@ -1,3 +1,25 @@
+# JARVIS v0.7: offline voice, signing and updates
+
+- Offline voice: Piper Dmitri int8 Russian voice via sherpa-onnx native Android TTS. The CI downloads the voice ONNX model and AAR library from k2-fsa official releases. Fish Audio remains an optional online voice, Android TTS is a fallback. This voice is not a film actor's recording.
+- Other features: floating JARVIS overlay, experimental wake-word through Android SpeechRecognizer, offline SmolLM2 with optional Qwen download, OpenAI cloud chat, Android command handling with explicit Accessibility Service permission.
+
+## Stable signing: necessary for upgrades without uninstall
+Android permits an in-place update only if the package name is the same, the newer versionCode is greater, and the APK is signed with the SAME certificate. GitHub Actions normally generates a new disposable debug key on every runner, which breaks updates.
+To use the workflow's stable signing support, set FOUR GitHub Actions secrets in the repository Settings > Secrets and variables > Actions:
+- JARVIS_KEYSTORE_BASE64: base64-encoded keystore file. KEEP SECRET and NEVER commit it to GitHub.
+- JARVIS_STORE_PASSWORD: keystore password.
+- JARVIS_KEY_PASSWORD: password of key entry.
+- JARVIS_KEY_ALIAS: jarvis.
+Then use Actions > Build JARVIS Android 14 APK > Run workflow on branch jarvis-android14. The GitHub workflow signs with that key and prints the certificate fingerprint, which must remain identical in later releases.
+Keep a private backup of the keystore and passwords. Losing this private key would prevent future in-place updates. Previously installed v0.6 or v0.5 builds were signed with ephemeral keys, so moving to the first stable-signed APK could require ONE reinstall. Subsequent stable-signed builds should update without deleting the app data.
+
+## Testing
+After installation open JARVIS > Offline Piper Dmitri > Preview offline voice. This bundled voice first copies model assets to private app storage, then synthesizes a WAV file. OpenAI/Fish Audio API keys are optional for their separate paid online features.
+This is an experimental Android 14 application; compilation and unit tests do not prove that every function works across OEM firmware. Real-device tests are required for microphone wake word, overlay, and Piper native libraries.
+
+Sources: https://github.com/k2-fsa/sherpa-onnx ; Android voice archives under its releases. Verify the voice model license before redistribution. This project has no affiliation with Marvel.
+
+---
 # JARVIS AI v0.6.0 — Android 14
 
 Тестовый помощник с голосовой активацией «Джарвис», плавающим окном, локальными Android-командами, автоматическим переключением локального/облачного ИИ и улучшенной обработкой простых вопросов.

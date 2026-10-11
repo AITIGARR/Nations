@@ -78,6 +78,11 @@ jobs:
       - name: Build debug APK
         working-directory: JARVIS-Android14
         run: gradle --no-daemon --max-workers=2 testDebugUnitTest assembleDebug
+      - name: Verify signing certificate
+        run: |
+          APK=JARVIS-Android14/app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          "${ANDROID_HOME}/build-tools/35.0.0/apksigner" verify --print-certs "$APK"
       - uses: actions/upload-artifact@v4
         with:
           name: JARVIS-Android14-debug-apk
