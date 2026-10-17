@@ -202,11 +202,15 @@ public class JarvisService extends Service implements RecognitionListener, Jarvi
         String lower = q.toLowerCase(Locale.ROOT).replace('ё', 'е');
         publish(q, "user");
 
-        String instantAnswer = FastMath.calculate(q);
-        BasicCommands.Kind basic = BasicCommands.classify(lower);
-        String skillAnswer = basic == BasicCommands.Kind.NONE && instantAnswer == null
-            ? JarvisSkills.handle(this, overlay, q) : null;
-        if (instantAnswer != null) {
+        String callTarget = ContactCalling.requestedContact(q);
+        String instantAnswer = callTarget == null ? FastMath.calculate(q) : null;
+        BasicCommands.Kind basic = callTarget == null
+            ? BasicCommands.classify(lower) : BasicCommands.Kind.NONE;
+        String skillAnswer = callTarget == null && basic == BasicCommands.Kind.NONE
+            && instantAnswer == null ? JarvisSkills.handle(this, overlay, q) : null;
+        if (callTarget != null) {
+            speakFast(ContactCalling.open(this, overlay, callTarget));
+        } else if (instantAnswer != null) {
             speakFast(instantAnswer);
         } else if (basic != BasicCommands.Kind.NONE) {
             android.os.BatteryManager battery = getSystemService(android.os.BatteryManager.class);

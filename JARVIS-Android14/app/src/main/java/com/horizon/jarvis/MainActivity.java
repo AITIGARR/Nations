@@ -107,7 +107,7 @@ public class MainActivity extends Activity {
         headline.setGravity(Gravity.CENTER);
         root.addView(headline);
 
-        TextView subtitle = text("PERSONAL ASSISTANT  •  ANDROID 14  •  v1.0", 10, 0xFF7EAEC7);
+        TextView subtitle = text("PERSONAL ASSISTANT  •  ANDROID 14  •  v1.1", 10, 0xFF7EAEC7);
         subtitle.setGravity(Gravity.CENTER);
         subtitle.setLetterSpacing(.1f);
         root.addView(subtitle);
@@ -188,6 +188,11 @@ public class MainActivity extends Activity {
         Button stop = action("■   ОСТАНОВИТЬ АССИСТЕНТА");
         root.addView(stop);
         stop.setOnClickListener(v -> startService(new Intent(this, JarvisService.class).setAction(STOP)));
+
+        Button callQuick = action("☎   ПОЗВОНИТЬ КОНТАКТУ");
+        root.addView(callQuick);
+        callQuick.setOnClickListener(v ->
+            startActivity(new Intent(this, CallContactActivity.class)));
 
         TextView sec = text("ПОВЕРХ ДРУГИХ ПРИЛОЖЕНИЙ", 12, CYAN);
         sec.setPadding(0, px(18), 0, px(7));
@@ -276,6 +281,8 @@ public class MainActivity extends Activity {
             .setTitle("Что я умею, сэр")
             .setMessage("«Джарвис, сколько будет 250 умножить на 4»\n" +
                 "«Джарвис, открой Telegram»\n" +
+                "«Джарвис, позвони маме»\n" +
+                "«Джарвис, набери контакт Алексей»\n" +
                 "«Джарвис, введи текст привет»\n" +
                 "«Джарвис, очисти поле»\n" +
                 "«Джарвис, открой клавиатуру»\n" +
