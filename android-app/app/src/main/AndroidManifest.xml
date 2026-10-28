@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<uses-permission android:name="android.permission.INTERNET" />
+<uses-feature android:name="android.hardware.vulkan.version" android:version="0x00400000" android:required="false" />
+<application android:label="Horizon Rust Mobile" android:theme="@android:style/Theme.Material.NoActionBar" android:usesCleartextTraffic="false" android:allowBackup="false" android:extractNativeLibs="true">
+<activity android:name=".MainActivity" android:exported="true">
+<intent-filter>
+<action android:name="android.intent.action.MAIN"/>
+<category android:name="android.intent.category.LAUNCHER"/>
+</intent-filter>
+</activity>
+<activity android:name="android.app.NativeActivity" android:exported="false"
+android:screenOrientation="sensorLandscape" android:configChanges="orientation|keyboardHidden|screenSize|smallestScreenSize|uiMode">
+<meta-data android:name="android.app.lib_name" android:value="horizon_client"/>
+</activity>
+</application>
+</manifest>
