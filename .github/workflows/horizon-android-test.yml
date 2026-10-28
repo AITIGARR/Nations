@@ -1,0 +1,48 @@
+name: Horizon Rust ARM64 Android compilation experiment
+on:
+  push:
+    branches: [horizon-android-build-test]
+    paths:
+      - 'android-test/**'
+      - '.github/workflows/horizon-android-test.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  native-android:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - name: Install NDK
+        run: |
+          sdkmanager --install 'ndk;27.2.12479018' 'platforms;android-35' 'build-tools;35.0.0'
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/27.2.12479018" >> "$GITHUB_ENV"
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+      - name: Install cargo-ndk
+        run: cargo install cargo-ndk --locked
+      - name: Clone original game and patch entrypoint
+        run: |
+          git init horizon
+          git -C horizon remote add origin https://github.com/horizon-rust/horizon.git
+          git -C horizon fetch --depth 1 origin 791d8b89509ded283b599791139bf139f81c75d8
+          git -C horizon checkout --detach FETCH_HEAD
+          python3 android-test/patch.py horizon
+      - name: Compile real game engine for Android
+        run: |
+          cd horizon
+          cargo ndk -t arm64-v8a -o ../out build --release --no-default-features -p horizon-client --lib
+          test -s ../out/arm64-v8a/libhorizon_client.so
+      - name: Upload native engine if build passed
+        uses: actions/upload-artifact@v4
+        with:
+          name: horizon-native-android-arm64
+          path: out/arm64-v8a/libhorizon_client.so
+          if-no-files-found: error
