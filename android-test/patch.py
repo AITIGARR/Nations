@@ -82,4 +82,47 @@ gt=gt.replace("EventLoop::new()?.run_app(", "mobile_event_loop()?.run_app(")
 cargo.write_text(ct)
 lib.write_text(lt)
 game.write_text(gt)
-print("Android JNI/NativeActivity bridge injected")
+# arboard is a desktop clipboard library. Keep in-memory clipboard on Android.
+input_root = root.parent / "horizon-client-input"
+input_toml = input_root / "Cargo.toml"
+it = input_toml.read_text()
+arboard_dep = 'arboard = { version = "3.6.1", default-features = false, features = ["wayland-data-control"] }'
+it = replace_one(it, arboard_dep, "")
+it += '\n[target.\'cfg(not(target_os = "android"))\'.dependencies]\n' + arboard_dep + '\n'
+clip_path = input_root / "src/clipboard.rs"
+clip = clip_path.read_text()
+clip = replace_one(clip,'    system: Option<arboard::Clipboard>,','    #[cfg(not(target_os = "android"))]\n    system: Option<arboard::Clipboard>,')
+clip = replace_one(clip,'    fn system(&mut self) -> Option<&mut arboard::Clipboard> {','    #[cfg(not(target_os = "android"))]\n    fn system(&mut self) -> Option<&mut arboard::Clipboard> {')
+start = clip.index('impl Clipboard for SystemClipboard {')
+end = clip.index('/// A clipboard in memory.', start)
+clip = clip[:start] + '''impl Clipboard for SystemClipboard {
+    fn get(&mut self) -> String {
+        #[cfg(target_os = "android")]
+        { self.copied.clone().unwrap_or_default() }
+        #[cfg(not(target_os = "android"))]
+        {
+            let Some(system) = self.system() else {
+                return self.copied.clone().unwrap_or_default();
+            };
+            match system.get_text() {
+                Ok(text) => text,
+                Err(arboard::Error::ContentNotAvailable) => String::new(),
+                Err(_) => { self.system = None; String::new() }
+            }
+        }
+    }
+    fn set(&mut self, text: &str) {
+        if text.is_empty() { return; }
+        self.copied = Some(text.to_owned());
+        #[cfg(not(target_os = "android"))]
+        if let Some(system) = self.system()
+            && system.set_text(text.to_owned()).is_err()
+        { self.system = None; }
+    }
+}
+
+''' + clip[end:]
+input_toml.write_text(it)
+clip_path.write_text(clip)
+
+print("Android JNI/NativeActivity bridge injected (with Android clipboard adaptation)")
