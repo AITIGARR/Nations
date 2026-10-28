@@ -20,8 +20,13 @@ jobs:
           java-version: '17'
       - name: Install NDK
         run: |
-          sdkmanager --install 'ndk;27.2.12479018' 'platforms;android-35' 'build-tools;35.0.0'
-          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/27.2.12479018" >> "$GITHUB_ENV"
+          SDK_ROOT=/usr/local/lib/android/sdk
+          SDKMANAGER="$(find "$SDK_ROOT/cmdline-tools" -type f -name sdkmanager | head -n 1)"
+          test -x "$SDKMANAGER"
+          "$SDKMANAGER" --sdk_root="$SDK_ROOT" --install 'ndk;27.2.12479018' 'platforms;android-35' 'build-tools;35.0.0'
+          echo "ANDROID_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_HOME=$SDK_ROOT/ndk/27.2.12479018" >> "$GITHUB_ENV"
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: aarch64-linux-android
@@ -39,9 +44,19 @@ jobs:
           cd horizon
           cargo ndk -t arm64-v8a -o ../out build --release --no-default-features -p horizon-client --lib
           test -s ../out/arm64-v8a/libhorizon_client.so
-      - name: Upload native engine if build passed
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - name: Package real engine into APK
+        run: |
+          mkdir -p android-app/app/src/main/jniLibs/arm64-v8a
+          cp out/arm64-v8a/libhorizon_client.so android-app/app/src/main/jniLibs/arm64-v8a/
+          cd android-app
+          gradle :app:assembleDebug --no-daemon
+          unzip -l app/build/outputs/apk/debug/app-debug.apk | grep 'lib/arm64-v8a/libhorizon_client.so'
+      - name: Upload genuine game APK
         uses: actions/upload-artifact@v4
         with:
-          name: horizon-native-android-arm64
-          path: out/arm64-v8a/libhorizon_client.so
+          name: Horizon-Rust-Android-APK
+          path: android-app/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
