@@ -13,15 +13,18 @@ import java.util.zip.*;
 final class ImportWorker {
     private final Context context;
     private final File base;
+    private final String version;
     private long copied;
     private int count;
     private static final long LIMIT=3L*1024*1024*1024;
     private static final int FILE_LIMIT=120000;
-    ImportWorker(Context context){
+    ImportWorker(Context context,String version){
+        if(!VersionLibrary.valid(version))throw new IllegalArgumentException("Недопустимая версия");
+        this.version=version;
         this.context=context.getApplicationContext();
         base=new File(context.getFilesDir(),"horizon");
     }
-    static boolean ready(Context c){return new File(c.getFilesDir(),"horizon/resources/horizon-resources.json").isFile();}
+    static boolean ready(Context c){return VersionLibrary.canLaunch(c,VersionLibrary.selected(c));}
 
     String importArchive(Uri uri)throws Exception{
         File tmp=staging();
@@ -87,24 +90,53 @@ final class ImportWorker {
     }
     private String finish(File tmp)throws Exception{
         File marker=findMarker(tmp,4);
+        File perVersion=new File(base,"versions/"+version);
+        if(!perVersion.isDirectory()&&!perVersion.mkdirs())
+            throw new IOException("Нельзя создать папку версии");
         if(marker!=null){
             File src=marker.getParentFile();
-            File current=new File(base,"resources");
-            File backup=new File(base,"resources-backup");
+            if(VersionLibrary.ENGINE_VERSION.equals(version)){
+                String json;
+                try(InputStream in=new FileInputStream(marker)){
+                    ByteArrayOutputStream out=new ByteArrayOutputStream();
+                    copy(in,out);
+                    json=out.toString("UTF-8");
+                }
+                int dataVersion=new org.json.JSONObject(json).optInt("data_version",-1);
+                if(dataVersion!=5023)throw new IOException("Ресурсы относятся к другой версии: Horizon 26.3 требует DataVersion 5023");
+                File current=new File(base,"resources");
+                File backup=new File(base,"resources-backup");
+                delete(backup);
+                if(current.exists()&&!current.renameTo(backup))
+                    throw new IOException("Не удалось сохранить предыдущую установку");
+                if(!src.renameTo(current)){
+                    if(backup.exists())backup.renameTo(current);
+                    throw new IOException("Ошибка установки ресурсов");
+                }
+                delete(backup);
+                delete(tmp);
+                VersionLibrary.add(context,version);
+                return "Horizon 26.3: подготовленные ресурсы установлены; можно пробовать запуск.";
+            }
+            File current=new File(perVersion,"resources");
+            File backup=new File(perVersion,"resources-backup");
             delete(backup);
-            if(current.exists()&&!current.renameTo(backup))throw new IOException("Не удалось сохранить прошлые данные");
+            if(current.exists()&&!current.renameTo(backup))
+                throw new IOException("Не удалось сохранить предыдущие файлы");
             if(!src.renameTo(current)){
                 if(backup.exists())backup.renameTo(current);
-                throw new IOException("Не удалось установить подготовленные ресурсы");
+                throw new IOException("Ошибка импорта");
             }
             delete(backup);delete(tmp);
-            return "Подготовленные ресурсы Horizon импортированы";
+            VersionLibrary.add(context,version);
+            return "Ресурсы "+version+" сохранены. Rust-движок пока рассчитан только на 26.3.";
         }
-        File imports=new File(base,"imports");
+        File imports=new File(perVersion,"imports");
         if(!imports.isDirectory()&&!imports.mkdirs())throw new IOException("Нельзя сохранить файлы");
         File target=new File(imports,tmp.getName());
         if(!tmp.renameTo(target))throw new IOException("Не удалось перенести импорт");
-        return "Файлы сохранены, но для Horizon нужны подготовленные ресурсы 26.3 с horizon-resources.json";
+        VersionLibrary.add(context,version);
+        return "Файлы "+version+" импортированы. Для запуска в Horizon требуются ресурсы и движок этой версии.";
     }
     private File findMarker(File root,int depth){
         if(new File(root,"horizon-resources.json").isFile())return new File(root,"horizon-resources.json");
