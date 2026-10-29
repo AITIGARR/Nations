@@ -4,6 +4,7 @@ on:
     branches: [horizon-android-build-test]
     paths:
       - 'android-test/**'
+      - 'android-app/**'
       - '.github/workflows/horizon-android-test.yml'
   workflow_dispatch:
 permissions:
